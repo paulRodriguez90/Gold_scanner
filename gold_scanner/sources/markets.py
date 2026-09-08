@@ -17,6 +17,8 @@ YAHOO_CHART = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 XAUS_HISTORY = "https://xaus.com/api/v1/history"
 TREASURY_TEXT = "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/TextView"
 TREASURY_XML = "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml"
+TRADING_ECONOMICS_TIPS = "https://tradingeconomics.com/united-states/10-year-tips-yield"
+
 TREASURY_XML_STATIC = {
     "nominal": "https://home.treasury.gov/sites/default/files/interest-rates/yield.xml",
     "real": "https://home.treasury.gov/sites/default/files/interest-rates/real_yield.xml",
@@ -148,26 +150,15 @@ def _treasury_xml_month_history(kind: str, year: int, month: int) -> list[tuple[
                     text = (child.text or "").strip()
                     if text and name not in fields:
                         fields[name] = text
-                # Treasury's current XML model uses NEW_DATE and BC_10YEAR
-                # (uppercase in the XML, namespace-prefixed). Older feeds may
-                # expose RECORDDATE/BC_10YEAR. We normalize local tag names
-                # case-insensitively so both formats work.
-                normalized = {
-                    str(k).rsplit(":", 1)[-1].lower(): v
-                    for k, v in fields.items()
-                }
-                date_text = (
-                    normalized.get("new_date")
-                    or normalized.get("recorddate")
-                    or normalized.get("quote_date")
-                )
-                value_text = normalized.get("bc_10year")
+                date_text = fields.get("b:recorddate") or fields.get("recorddate") or fields.get("d:recorddate")
+                value_text = fields.get("b:bc_10year") or fields.get("bc_10year") or fields.get("d:bc_10year")
                 if not date_text or not value_text:
-                    for k, v in normalized.items():
-                        lk = k.replace("_", "")
-                        if date_text is None and ("recorddate" in lk or "newdate" in lk or "quotedate" in lk):
+                    # Treasury XML commonly uses fields like bc_10year / bc_10year_1.
+                    for k, v in fields.items():
+                        lk = k.lower().replace("_", "")
+                        if date_text is None and "recorddate" in lk:
                             date_text = v
-                        if value_text is None and "bc10year" in lk:
+                        if value_text is None and "10year" in lk and "30year" not in lk:
                             value_text = v
                 if not date_text or not value_text or value_text.upper() == "N/A":
                     continue
@@ -280,6 +271,41 @@ def _treasury_history(kind: str, limit: int = 8) -> list[tuple[str, float]]:
         except Exception as exc:
             errors.append(exc)
     raise RuntimeError(f"Treasury unavailable for {kind}: {errors[-1] if errors else 'no data'}")
+
+def _trading_economics_real_yield_current() -> list[tuple[str, float]]:
+    """Fetch the current 10Y TIPS yield from Trading Economics public page.
+
+    This is a non-official fallback intended to fill the intraday gap before
+    Treasury publishes its daily real-yield observation. The page exposes the
+    current value publicly; historical observations remain delegated to
+    Treasury/FRED.
+    """
+    r = _get(TRADING_ECONOMICS_TIPS, timeout=12)
+    text = r.text
+    import re
+
+    # Prefer the value immediately following the page's Actual label.
+    patterns = [
+        r"Actual(?:\s|<[^>]*>)*([+-]?\d+(?:\.\d+)?)",
+        r"US 10Y TIPS(?:\s|<[^>]*>)*([+-]?\d+(?:\.\d+)?)",
+    ]
+    value = None
+    for pattern in patterns:
+        m = re.search(pattern, text, flags=re.I | re.S)
+        if m:
+            try:
+                candidate = float(m.group(1))
+                if -10.0 < candidate < 10.0:
+                    value = candidate
+                    break
+            except ValueError:
+                pass
+    if value is None:
+        raise RuntimeError("Trading Economics returned no usable 10Y TIPS value")
+
+    # The public quote is a current market observation for today's session.
+    return [(datetime.now(timezone.utc).date().isoformat(), value)]
+
 
 def _unavailable_reading(name: str, unit: str, reason: str) -> MarketReading:
     return MarketReading(
@@ -398,10 +424,28 @@ def fetch_market_snapshot() -> dict[str, MarketReading]:
         out["real_yields"] = _make_reading("10Y Real Yield", real_rows, "%", real_source, False, 0.04, 0.08)
     except Exception as treasury_exc:
         try:
-            real_rows = _fred_history("DFII10")
-            out["real_yields"] = _make_reading("10Y Real Yield", real_rows, "%", "FRED / U.S. Treasury (DFII10) fallback", False, 0.04, 0.08)
-        except Exception as fred_exc:
-            out["real_yields"] = _unavailable_reading("10Y Real Yield", "%", f"Treasury: {treasury_exc}; FRED: {fred_exc}")
+            te_rows = _trading_economics_real_yield_current()
+            # Add prior official observations when available so 1d/5d changes
+            # remain meaningful even when the intraday value comes from TE.
+            history_rows: list[tuple[str, float]] = []
+            try:
+                history_rows = _treasury_history("real")
+            except Exception:
+                try:
+                    history_rows = _fred_history("DFII10")
+                except Exception:
+                    history_rows = []
+            combined = sorted({*history_rows, *te_rows}, key=lambda x: x[0])
+            out["real_yields"] = _make_reading(
+                "10Y Real Yield", combined[-8:] if combined else te_rows, "%",
+                "Trading Economics / Treasury-FRED history fallback", False, 0.04, 0.08
+            )
+        except Exception as te_exc:
+            try:
+                real_rows = _fred_history("DFII10")
+                out["real_yields"] = _make_reading("10Y Real Yield", real_rows, "%", "FRED / U.S. Treasury (DFII10) fallback", False, 0.04, 0.08)
+            except Exception as fred_exc:
+                out["real_yields"] = _unavailable_reading("10Y Real Yield", "%", f"Treasury: {treasury_exc}; Trading Economics: {te_exc}; FRED: {fred_exc}")
 
     try:
         xau_rows = _xaus_history()

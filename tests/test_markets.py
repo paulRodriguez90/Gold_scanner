@@ -148,20 +148,24 @@ def test_report_marks_previous_observation(capsys):
     output = capsys.readouterr().out
     assert "dato anterior (2026-09-04)" in output
 
-
-def test_treasury_xml_real_yield_parses_current_new_date_and_uppercase_field(monkeypatch):
+def test_trading_economics_real_yield_current_parses_public_page(monkeypatch):
     class Response:
-        content = b"""<?xml version="1.0"?>
-        <feed xmlns="http://www.w3.org/2005/Atom" xmlns:d="http://schemas.microsoft.com/ado/2007/08/dataservices">
-          <entry>
-            <content type="application/xml">
-              <m:properties xmlns:m="http://schemas.microsoft.com/ado/2007/08/dataservices/metadata">
-                <d:NEW_DATE>2026-09-04T00:00:00</d:NEW_DATE>
-                <d:BC_10YEAR>2.43</d:BC_10YEAR>
-              </m:properties>
-            </content>
-          </entry>
-        </feed>"""
+        text = '<div>Actual</div><div>2.43</div><div>US 10Y TIPS</div>'
     monkeypatch.setattr(markets, "_get", lambda *args, **kwargs: Response())
-    rows = markets._treasury_xml_month_history("real", 2026, 9)
-    assert rows == [("2026-09-04", 2.43)]
+    rows = markets._trading_economics_real_yield_current()
+    assert rows[-1][1] == 2.43
+
+
+def test_market_snapshot_uses_trading_economics_before_fred(monkeypatch):
+    def fail_treasury(kind, *args, **kwargs):
+        raise RuntimeError("treasury unavailable")
+    monkeypatch.setattr(markets, "_treasury_history", fail_treasury)
+    monkeypatch.setattr(markets, "_trading_economics_real_yield_current", lambda: [("2026-09-08", 2.43)])
+    monkeypatch.setattr(markets, "_fred_history", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("fred unavailable")))
+    monkeypatch.setattr(markets, "_yahoo_history", lambda symbol, *args, **kwargs: [
+        ("2026-09-07", 98.9), ("2026-09-08", 98.8)
+    ] if symbol == "DX-Y.NYB" else [("2026-09-07", 4440), ("2026-09-08", 4450)])
+    monkeypatch.setattr(markets, "_xaus_history", lambda: [("2026-09-07", 4440), ("2026-09-08", 4450)])
+    snapshot = markets.fetch_market_snapshot()
+    assert snapshot["real_yields"].value == 2.43
+    assert "Trading Economics" in snapshot["real_yields"].source
