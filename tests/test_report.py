@@ -60,3 +60,10 @@ def test_report_filters_past_bls_releases(capsys):
     output = capsys.readouterr().out
     assert "Old release" not in output
     assert "Producer Price Index for August 2026" in output
+
+
+def test_report_mentions_persistent_surprise(capsys):
+    # Use the existing test module fixtures/functions if available; this test only checks the source text.
+    from pathlib import Path
+    text = Path('gold_scanner/report.py').read_text(encoding='utf-8')
+    assert 'último surprise válido permanece en la ecuación' in text

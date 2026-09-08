@@ -160,15 +160,11 @@ def _surprise_score(actual, consensus, scale, positive_bullish=True):
     return raw if positive_bullish else -raw
 
 
-def calculate_surprise_impact(snapshot: dict, events=None) -> dict:
-    """Calculate actual-vs-consensus surprise and expose upcoming consensus.
+SURPRISE_WEIGHTS = {"cpi": .20, "core_cpi": .20, "ppi": .15, "core_ppi": .10, "nfp": .20, "unemployment": .15}
 
-    Consensus is never inferred. Released events contribute to the score;
-    future events are reported separately so their forecasts can be monitored
-    before the release.
-    """
-    events = events or []
-    specs = [
+
+def _surprise_specs():
+    return [
         (("cpi",), "CPI", 0.20, False),
         (("core_cpi",), "Core CPI", 0.15, False),
         (("ppi",), "PPI", 0.30, False),
@@ -176,53 +172,83 @@ def calculate_surprise_impact(snapshot: dict, events=None) -> dict:
         (("nfp",), "NFP", 150_000.0, False),
         (("unemployment",), "Unemployment", 0.15, True),
     ]
+
+
+def calculate_surprise_impact(snapshot: dict, events=None, state=None) -> dict:
+    """Return active macro surprise memory plus upcoming consensus.
+
+    Released actual-vs-consensus events are stored outside this function by
+    ``macro_state``. Their latest valid score remains active until a newer
+    release replaces it. Future events never become surprise scores merely
+    because they have a forecast.
+    """
+    events = events or []
+    state = state or {"surprises": {}}
+    specs = _surprise_specs()
     labels = {k[0]: label for k, label, _, _ in specs}
     scales = {k[0]: (scale, bullish) for k, _, scale, bullish in specs}
     released_rows = []
     upcoming_rows = []
     missing_consensus = []
+
     for e in events:
         if e.key not in labels:
             continue
         label = labels[e.key]
         scale, positive_bullish = scales[e.key]
+        metric_label = f"{label} {e.metric.upper()}" if e.metric and e.metric != "value" else label
         if e.actual is None:
             if e.consensus is not None:
-                metric_label = f"{label} {e.metric.upper()}" if e.metric and e.metric != "value" else label
                 upcoming_rows.append({"key": e.key, "metric": e.metric, "label": metric_label, "consensus": e.consensus, "previous": e.previous, "date": e.date, "source": e.source, "release_time": e.release_time})
             continue
         if e.consensus is None:
             missing_consensus.append(label)
             continue
         score = _surprise_score(e.actual, e.consensus, scale, positive_bullish)
-        metric_label = f"{label} {e.metric.upper()}" if e.metric and e.metric != "value" else label
         released_rows.append({
             "key": e.key, "metric": e.metric, "label": metric_label, "actual": e.actual,
             "consensus": e.consensus, "previous": e.previous,
             "surprise": e.actual - e.consensus, "score": round(score, 1),
             "date": e.date, "source": e.source, "release_time": e.release_time,
         })
-    # Keep only the latest released event per indicator for scoring.
-    latest = {}
+
+    # State is the source of truth for the currently active surprise. If the
+    # current calendar contains a newer released event, it supersedes the old
+    # stored event for that same metric after main() updates the state.
+    active = []
+    for row in (state.get('surprises') or {}).values():
+        if row.get('actual') is not None and row.get('consensus') is not None:
+            active.append(dict(row))
     for row in released_rows:
-        identity = (row["key"], row.get("metric") or "value")
+        ident = f"{row.get('key') or ''}|{row.get('metric') or ''}|{row.get('date') or ''}"
+        # Avoid duplicate display when a newly retrieved event is already in state.
+        if not any(f"{a.get('key') or ''}|{a.get('metric') or ''}|{a.get('date') or ''}" == ident for a in active):
+            active.append(row)
+
+    # Only the latest release per indicator/metric contributes to the active
+    # score. This means a monthly indicator does not accumulate old surprises.
+    latest = {}
+    for row in active:
+        identity = (row.get('key'), row.get('metric') or 'value')
         current = latest.get(identity)
-        if current is None or (row["date"], row.get("release_time") or "") > (current["date"], current.get("release_time") or ""):
+        if current is None or (row.get('date') or '', row.get('release_time') or '') > (current.get('date') or '', current.get('release_time') or ''):
             latest[identity] = row
     rows = list(latest.values())
-    upcoming_rows.sort(key=lambda r: (r["date"], r["key"]))
+    rows.sort(key=lambda r: (r.get('date') or '', r.get('key') or '', r.get('metric') or ''))
+    upcoming_rows.sort(key=lambda r: (r["date"], r["key"], r.get("metric") or ""))
+
     if not rows:
-        msg = "No hay consenso disponible para calcular sorpresas."
+        msg = "No hay una sorpresa publicada vigente con consenso. Los datos macro publicados siguen formando parte del Macro Fundamental."
         if missing_consensus:
-            msg += " Sin consenso: " + ", ".join(sorted(set(missing_consensus)) ) + "."
-        return {"score": 0.0, "state": "SIN CONSENSO", "events": [], "upcoming": upcoming_rows, "missing_consensus": sorted(set(missing_consensus)), "explanation": msg}
-    weights = {"cpi": .20, "core_cpi": .20, "ppi": .15, "core_ppi": .10, "nfp": .20, "unemployment": .15}
-    total_w = sum(weights[r["key"]] for r in rows)
-    score = clamp(sum(r["score"] * weights[r["key"]] for r in rows) / total_w)
-    if score >= 30: state = "FAVORABLE AL ORO"
-    elif score <= -30: state = "DESFAVORABLE AL ORO"
-    else: state = "MIXTO / LEVE"
-    explanation = "; ".join(f'{r["label"]} {r["score"]:+.1f}' for r in rows)
+            msg += " Sin consenso verificable: " + ", ".join(sorted(set(missing_consensus))) + "."
+        return {"score": 0.0, "state": "SIN SORPRESA VIGENTE", "events": [], "upcoming": upcoming_rows, "missing_consensus": sorted(set(missing_consensus)), "explanation": msg}
+
+    total_w = sum(SURPRISE_WEIGHTS.get(r.get("key"), 0.0) for r in rows)
+    score = clamp(sum(float(r.get("score", 0.0)) * SURPRISE_WEIGHTS.get(r.get("key"), 0.0) for r in rows) / total_w) if total_w else 0.0
+    if score >= 30: state_name = "FAVORABLE AL ORO"
+    elif score <= -30: state_name = "DESFAVORABLE AL ORO"
+    else: state_name = "MIXTO / LEVE"
+    explanation = "; ".join(f'{r["label"]} {r["score"]:+.1f} (vigente)' for r in rows)
     if missing_consensus:
-        explanation += "; sin consenso: " + ", ".join(sorted(set(missing_consensus)))
-    return {"score": round(score,1), "state": state, "events": rows, "upcoming": upcoming_rows, "missing_consensus": sorted(set(missing_consensus)), "explanation": explanation}
+        explanation += "; sin consenso verificable: " + ", ".join(sorted(set(missing_consensus)))
+    return {"score": round(score, 1), "state": state_name, "events": rows, "upcoming": upcoming_rows, "missing_consensus": sorted(set(missing_consensus)), "explanation": explanation}

@@ -1,4 +1,4 @@
-# Gold Scanner V0.5.3
+# Gold Scanner V0.6
 
 Scanner macro/market para XAUUSD. No ejecuta operaciones.
 
@@ -39,3 +39,13 @@ La reacción posterior al dato intradía sigue reservada para una capa posterior
 - Mantiene Actual, Consensus y Previous asociados a la misma métrica y fecha.
 - Evita tratar CPI MoM y CPI YoY como duplicados.
 - Los eventos publicados y los próximos consensos muestran la métrica normalizada.
+
+
+## V0.6 — Persistent Macro Context
+- Mantiene el último dato macro publicado como dato vigente hasta que exista una publicación más reciente.
+- Mantiene el último surprise válido (Actual vs Consensus) activo en la ecuación hasta que el mismo indicador/métrica publique un dato nuevo.
+- El consenso futuro se muestra como referencia, pero nunca se convierte en surprise antes de la publicación.
+- Persiste el estado en `.gold_scanner_state.json`.
+- GitHub Actions restaura y guarda ese estado mediante Actions Cache entre ejecuciones.
+- Al arrancar desde estado vacío, consulta 180 días de calendario para intentar recuperar el último evento publicado con consenso.
+- PPI/CPI futuros continúan mostrando Previous + Consensus mientras el último dato publicado sigue siendo el vigente.
