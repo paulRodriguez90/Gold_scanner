@@ -15,7 +15,7 @@ def run():
     score = weighted_score({})
     print(f"\nCURRENT GOLD SCORE: {score:.1f}")
     print(f"STATE: {classify(score)}")
-    print("V0.1 STATUS: DATA CONNECTIONS OK; BIAS ENGINE NOT ACTIVE.")
+    print("V0.1.1 STATUS: DATA CONNECTIONS OK; BIAS ENGINE NOT ACTIVE.")
 
 
 if __name__ == "__main__":

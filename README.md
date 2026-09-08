@@ -1,32 +1,34 @@
-# Gold Scanner
+# Gold Scanner — V0.1.1
 
-Independent macro-bias assistant for manual XAUUSD trading.
+V0.1.1 keeps the real BLS/Fed data connections from V0.1 and fixes a GitHub Actions compatibility issue with the BLS `.ics` calendar endpoint.
 
-## Purpose
-The scanner monitors macroeconomic, market and gold-specific variables and sends alerts when:
-- the weekly/intraday bias changes,
-- a high-impact event is released,
-- a relevant event is approaching,
-- macro variables conflict,
-- the scheduled weekly or NY report is due.
+## What changed
 
-It does **not** execute trades and is intentionally independent from BotLion, Mina de Oro, Virutas de Oro and other EAs.
+- BLS `.ics` calendar is attempted first.
+- If BLS returns an HTTP/network error (including `403 Forbidden` from automated runners), the scanner uses an official 2026 fallback schedule for the key releases relevant to gold:
+  - Employment Situation / NFP
+  - CPI
+  - PPI
+  - JOLTS
+- The BLS Public Data API v1 remains the source for the latest observations.
+- The scanner still does **not** calculate market bias yet. V0.1.1 is only a reliable real-data connection layer.
 
-## Initial architecture
-Data sources -> normalization -> factor scores -> correlation/conflict layer -> Gold Score -> state -> alert engine -> Telegram.
+## Run locally
 
-## Initial factor groups
-- Fed
-- Inflation
-- Employment
-- DXY
-- US10Y
-- Real Yields
-- China
-- PBoC / central-bank gold demand
-- Oil
-- Geopolitics
-- XAUUSD
+```bash
+python -m pip install -r requirements.txt
+python -m pytest -q
+python -m gold_scanner.main
+```
 
-## Status
-V0 implementation scaffold. Data connectors and credentials are intentionally isolated from the scoring engine.
+## GitHub Actions
+
+The workflow runs every 15 minutes and can also be launched manually with **Run workflow**.
+
+A successful run should finish with:
+
+```text
+CURRENT GOLD SCORE: 0.0
+STATE: INDECISION
+V0.1 STATUS: DATA CONNECTIONS OK; BIAS ENGINE NOT ACTIVE.
+```
