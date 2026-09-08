@@ -51,6 +51,7 @@ class EconomicEvent:
     importance: int = 0
     released: bool = False
     release_time: Optional[str] = None
+    metric: str = ""
 
 
 def _num(value):
@@ -100,7 +101,7 @@ def _event_from_te(item: dict, key: str) -> EconomicEvent:
     actual = item.get("ActualValue") if item.get("ActualValue") is not None else _num(item.get("Actual"))
     previous = item.get("PreviousValue") if item.get("PreviousValue") is not None else _num(item.get("Previous"))
     consensus = item.get("ForecastValue") if item.get("ForecastValue") is not None else _num(item.get("Forecast"))
-    return EconomicEvent(key, date, actual, previous, consensus, item.get("Unit", ""), "Trading Economics", int(item.get("Importance") or 0), actual is not None, raw_date)
+    return EconomicEvent(key, date, actual, previous, consensus, item.get("Unit", ""), "Trading Economics", int(item.get("Importance") or 0), actual is not None, raw_date, "")
 
 
 class _TableParser(HTMLParser):
@@ -187,7 +188,7 @@ def _parse_public_calendar_rows(html: str, key: str, source: str) -> list[Econom
         actual = _num(cells[2])
         if previous is None and consensus is None and actual is None:
             continue
-        out.append(EconomicEvent(key, date, actual, previous, consensus, source=source, released=actual is not None, release_time=release_time))
+        out.append(EconomicEvent(key, date, actual, previous, consensus, source=source, released=actual is not None, release_time=release_time, metric=""))
     return out
 
 
@@ -272,7 +273,20 @@ def _parse_forexfactory_events(html: str) -> list[EconomicEvent]:
             actual = None
             forecast, previous = vals[-2], vals[-1]
         time_match = re.search(r"\b(\d{1,2}:\d{2}(?:am|pm)?)\b", text, re.I)
-        out.append(EconomicEvent(key, current_date, actual, previous, forecast, source="Forex Factory", released=released, release_time=time_match.group(1) if time_match else None))
+        # Normalize the economic-calendar metric so MoM and YoY are kept as
+        # separate observations of the same event. This prevents, for example,
+        # CPI MoM (0.4%) and CPI YoY (3.4%) from being treated as duplicate
+        # CPI events or compared against the wrong consensus.
+        if key in {"cpi", "core_cpi", "ppi", "core_ppi"}:
+            if re.search(r"\b(y/y|yoy|year[- ]over[- ]year|annual)\b", lower):
+                metric = "yoy"
+            elif re.search(r"\b(m/m|mom|month[- ]over[- ]month)\b", lower):
+                metric = "mom"
+            else:
+                metric = "value"
+        else:
+            metric = "value"
+        out.append(EconomicEvent(key, current_date, actual, previous, forecast, source="Forex Factory", released=released, release_time=time_match.group(1) if time_match else None, metric=metric))
     return out
 
 
@@ -284,7 +298,7 @@ def _dedupe(events: list[EconomicEvent]) -> list[EconomicEvent]:
     seen = set()
     out = []
     for e in sorted(events, key=lambda x: (x.date, x.key, x.release_time or ""), reverse=True):
-        ident = (e.key, e.date, e.actual, e.previous, e.consensus)
+        ident = (e.key, e.date, e.metric, e.actual, e.previous, e.consensus)
         if ident in seen:
             continue
         seen.add(ident)

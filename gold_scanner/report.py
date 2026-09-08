@@ -46,12 +46,12 @@ def print_v03_report(fed, bls, markets, confluence, macro=None, combined_score=N
             print(f"Surprise score: {surprise["score"]:+.1f}")
             print(f"Surprise reading: {surprise["state"]}")
             for row in surprise.get("events", []):
-                print(f"{row["label"]}: actual={row["actual"]} | consensus={row["consensus"]} | surprise={row["surprise"]:+.4g} | score={row["score"]:+.1f} | date={row["date"]} | source={row.get('source','n/a')}")
+                print(f"{row["label"]}: actual={row["actual"]} | consensus={row["consensus"]} | previous={row.get("previous")} | surprise={row["surprise"]:+.4g} | score={row["score"]:+.1f} | date={row["date"]} | source={row.get('source','n/a')}")
             upcoming = [e for e in (surprise.get("upcoming", []) or []) if e.get("consensus") is not None]
             if upcoming:
                 print("Upcoming consensus:")
                 for row in upcoming[:6]:
-                    print(f"{row["label"]}: consensus={row["consensus"]} | date={row["date"]} | source={row.get('source','n/a')}")
+                    print(f"{row["label"]}: consensus={row["consensus"]} | previous={row.get("previous")} | date={row["date"]} | source={row.get('source','n/a')}")
             print(f"Surprise explanation: {surprise["explanation"]}")
         if combined_score is not None:
             print(f"Combined score (55% market / 25% macro / 20% surprise): {combined_score:+.1f}")
@@ -101,7 +101,7 @@ def print_v03_report(fed, bls, markets, confluence, macro=None, combined_score=N
         local_label = dt.strftime("%Y-%m-%d %H:%M UTC")
         print(f"- {local_label} — {item.get('title', item.get('summary', ''))}")
 
-    print("\nV0.5.2 FIXED STATUS: MARKET CONFLUENCE + MACRO FUNDAMENTAL + CONSENSUS SURPRISE SCORING ACTIVE; CONSENSUS FALLBACK IMPROVED.")
+    print("\nV0.5.3 STATUS: MARKET CONFLUENCE + MACRO FUNDAMENTAL + NORMALIZED CONSENSUS SURPRISE SCORING ACTIVE.")
 
 # Backward-compatible entry point retained for existing tests/tools.
 def print_v02_report(fed, bls, markets):

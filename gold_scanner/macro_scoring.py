@@ -188,14 +188,16 @@ def calculate_surprise_impact(snapshot: dict, events=None) -> dict:
         scale, positive_bullish = scales[e.key]
         if e.actual is None:
             if e.consensus is not None:
-                upcoming_rows.append({"key": e.key, "label": label, "consensus": e.consensus, "previous": e.previous, "date": e.date, "source": e.source, "release_time": e.release_time})
+                metric_label = f"{label} {e.metric.upper()}" if e.metric and e.metric != "value" else label
+                upcoming_rows.append({"key": e.key, "metric": e.metric, "label": metric_label, "consensus": e.consensus, "previous": e.previous, "date": e.date, "source": e.source, "release_time": e.release_time})
             continue
         if e.consensus is None:
             missing_consensus.append(label)
             continue
         score = _surprise_score(e.actual, e.consensus, scale, positive_bullish)
+        metric_label = f"{label} {e.metric.upper()}" if e.metric and e.metric != "value" else label
         released_rows.append({
-            "key": e.key, "label": label, "actual": e.actual,
+            "key": e.key, "metric": e.metric, "label": metric_label, "actual": e.actual,
             "consensus": e.consensus, "previous": e.previous,
             "surprise": e.actual - e.consensus, "score": round(score, 1),
             "date": e.date, "source": e.source, "release_time": e.release_time,
@@ -203,9 +205,10 @@ def calculate_surprise_impact(snapshot: dict, events=None) -> dict:
     # Keep only the latest released event per indicator for scoring.
     latest = {}
     for row in released_rows:
-        current = latest.get(row["key"])
+        identity = (row["key"], row.get("metric") or "value")
+        current = latest.get(identity)
         if current is None or (row["date"], row.get("release_time") or "") > (current["date"], current.get("release_time") or ""):
-            latest[row["key"]] = row
+            latest[identity] = row
     rows = list(latest.values())
     upcoming_rows.sort(key=lambda r: (r["date"], r["key"]))
     if not rows:

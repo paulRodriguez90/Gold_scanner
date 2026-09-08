@@ -1,8 +1,8 @@
-# Gold Scanner V0.5.2
+# Gold Scanner V0.5.3
 
 Scanner macro/market para XAUUSD. No ejecuta operaciones.
 
-## V0.5.2
+## V0.5.3
 
 Mejora la capa de **Actual vs Consensus**:
 - Trading Economics API si existe `TRADING_ECONOMICS_API_KEY`.
@@ -32,3 +32,10 @@ python -m gold_scanner.main
 - Trading Economics: consenso y datos de calendario.
 
 La reacción posterior al dato intradía sigue reservada para una capa posterior; no se inventa con variaciones diarias.
+
+
+## V0.5.3
+- Normaliza CPI/Core CPI/PPI/Core PPI en métricas MoM y YoY cuando la fuente las distingue.
+- Mantiene Actual, Consensus y Previous asociados a la misma métrica y fecha.
+- Evita tratar CPI MoM y CPI YoY como duplicados.
+- Los eventos publicados y los próximos consensos muestran la métrica normalizada.

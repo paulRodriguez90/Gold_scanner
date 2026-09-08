@@ -216,3 +216,25 @@ def test_forexfactory_parser_reads_usd_event():
     assert rows[0].actual == 0.4
     assert rows[0].consensus == 0.3
     assert rows[0].previous == 0.2
+
+
+def test_forexfactory_parser_normalizes_mom_and_yoy_separately():
+    from gold_scanner.sources.calendar import _parse_forexfactory_events
+    html = """
+    <table>
+      <tr><td>Fri Sep 11</td></tr>
+      <tr><td>8:30am</td><td>USD</td><td>High</td><td>Consumer Price Index m/m</td><td>0.4%</td><td>0.3%</td><td>0.2%</td></tr>
+      <tr><td>8:30am</td><td>USD</td><td>High</td><td>Consumer Price Index y/y</td><td>3.4%</td><td>3.3%</td><td>3.2%</td></tr>
+      <tr><td>8:30am</td><td>USD</td><td>High</td><td>Core CPI m/m</td><td>0.2%</td><td>0.2%</td><td>0.1%</td></tr>
+      <tr><td>8:30am</td><td>USD</td><td>High</td><td>Core CPI y/y</td><td>2.4%</td><td>2.4%</td><td>2.3%</td></tr>
+    </table>
+    """
+    rows = _parse_forexfactory_events(html)
+    assert {(r.key, r.metric) for r in rows} == {
+        ("cpi", "mom"), ("cpi", "yoy"),
+        ("core_cpi", "mom"), ("core_cpi", "yoy"),
+    }
+    cpi_mom = next(r for r in rows if r.key == "cpi" and r.metric == "mom")
+    cpi_yoy = next(r for r in rows if r.key == "cpi" and r.metric == "yoy")
+    assert (cpi_mom.actual, cpi_mom.consensus, cpi_mom.previous) == (0.4, 0.3, 0.2)
+    assert (cpi_yoy.actual, cpi_yoy.consensus, cpi_yoy.previous) == (3.4, 3.3, 3.2)
