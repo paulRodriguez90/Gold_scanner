@@ -30,3 +30,41 @@ def test_bls_fallback_contains_key_releases():
     assert any("Consumer Price Index for August 2026" in title for title in titles)
     assert any("Producer Price Index for August 2026" in title for title in titles)
     assert any("Employment Situation for September 2026" in title for title in titles)
+
+
+def test_bls_single_series_uses_path(monkeypatch):
+    from gold_scanner.sources import bls
+
+    seen = {}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {
+                "status": "REQUEST_SUCCEEDED",
+                "Results": {
+                    "series": [{
+                        "seriesID": "CUUR0000SA0",
+                        "data": [{
+                            "year": "2026",
+                            "period": "M08",
+                            "periodName": "August",
+                            "value": "325.000",
+                        }],
+                    }]
+                },
+            }
+
+    def fake_get(url, **kwargs):
+        seen["url"] = url
+        seen["kwargs"] = kwargs
+        return FakeResponse()
+
+    monkeypatch.setattr(bls.requests, "get", fake_get)
+    result = bls.fetch_latest_series("CUUR0000SA0")
+
+    assert seen["url"].endswith("/CUUR0000SA0")
+    assert "params" not in seen["kwargs"]
+    assert result["value"] == 325.0

@@ -1,6 +1,6 @@
-# Gold Scanner — V0.1.1
+# Gold Scanner — V0.1.2
 
-V0.1.1 keeps the real BLS/Fed data connections from V0.1 and fixes a GitHub Actions compatibility issue with the BLS `.ics` calendar endpoint.
+V0.1.2 keeps the real BLS/Fed data connections from V0.1 and fixes a GitHub Actions compatibility issue with the BLS `.ics` calendar endpoint.
 
 ## What changed
 
@@ -11,7 +11,7 @@ V0.1.1 keeps the real BLS/Fed data connections from V0.1 and fixes a GitHub Acti
   - PPI
   - JOLTS
 - The BLS Public Data API v1 remains the source for the latest observations.
-- The scanner still does **not** calculate market bias yet. V0.1.1 is only a reliable real-data connection layer.
+- The scanner still does **not** calculate market bias yet. V0.1.2 is only a reliable real-data connection layer.
 
 ## Run locally
 
@@ -32,3 +32,8 @@ CURRENT GOLD SCORE: 0.0
 STATE: INDECISION
 V0.1 STATUS: DATA CONNECTIONS OK; BIAS ENGINE NOT ACTIVE.
 ```
+
+
+## V0.1.2
+- Fixed BLS Public Data API single-series request: v1 requires the series ID in the URL for GET requests.
+- Added a regression test for the BLS request format.

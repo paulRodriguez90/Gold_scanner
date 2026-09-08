@@ -149,11 +149,17 @@ def fetch_release_calendar(timeout: int = 20) -> list[dict]:
 
 
 def fetch_latest_series(series_id: str, timeout: int = 20) -> dict:
-    """Fetch the latest observation from the public BLS API v1."""
+    """Fetch the latest observation from the public BLS API v1.
+
+    BLS v1 uses GET with the series ID in the URL for a single-series
+    request. Passing ``series_id`` as a query parameter to the collection
+    endpoint can return HTTP 415 (Unsupported Media Type).
+    """
+    url = f"{BLS_API_URL}{series_id}"
     r = requests.get(
-        BLS_API_URL,
-        params={"series_id": series_id},
+        url,
         timeout=timeout,
+        headers={"Accept": "application/json"},
     )
     r.raise_for_status()
     payload = r.json()
