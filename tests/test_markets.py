@@ -68,3 +68,25 @@ def test_xaus_history_rejects_insufficient_data(monkeypatch):
         assert False, "Expected RuntimeError"
     except RuntimeError as exc:
         assert "fewer than 2" in str(exc)
+
+
+
+def test_treasury_history_uses_previous_month_when_current_succeeds_but_is_short(monkeypatch):
+    calls = []
+    def fake_month(kind, year, month):
+        calls.append((kind, year, month))
+        if len(calls) == 1:
+            return [("2026-09-08", 2.41)]
+        return [("2026-08-31", 2.40), ("2026-09-01", 2.41)]
+    monkeypatch.setattr(markets, "_treasury_month_history", fake_month)
+    rows = markets._treasury_history("real", limit=2)
+    assert rows == [("2026-09-01", 2.41), ("2026-09-08", 2.41)]
+
+
+def test_treasury_history_propagates_current_month_failure(monkeypatch):
+    monkeypatch.setattr(markets, "_treasury_month_history", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("timeout")))
+    try:
+        markets._treasury_history("real")
+        assert False, "Expected RuntimeError"
+    except RuntimeError as exc:
+        assert str(exc) == "timeout"

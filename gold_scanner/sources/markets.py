@@ -62,7 +62,7 @@ def _direction(score: float) -> str:
     return "NEUTRAL"
 
 
-def _get(url: str, params: Optional[dict] = None, timeout: int = 20) -> requests.Response:
+def _get(url: str, params: Optional[dict] = None, timeout: int = 10) -> requests.Response:
     last_exc = None
     for attempt in range(2):
         try:
@@ -174,14 +174,25 @@ def _treasury_month_history(kind: str, year: int, month: int) -> list[tuple[str,
 
 
 def _treasury_history(kind: str, limit: int = 8) -> list[tuple[str, float]]:
+    """Best-effort Treasury history without silently substituting stale data.
+
+    The current month is attempted first. Only when that request succeeds but
+    contains too few rows do we add the previous month. If the current-month
+    request itself times out/fails, the exception is propagated so the caller
+    can use a genuinely independent fallback source.
+    """
     now = datetime.now(timezone.utc)
-    rows = _treasury_month_history(kind, now.year, now.month)
+    current_rows = _treasury_month_history(kind, now.year, now.month)
+    rows = list(current_rows)
     if len(rows) < limit:
-        previous_month = (now.replace(day=1) - timedelta(days=1))
-        rows = _treasury_month_history(kind, previous_month.year, previous_month.month) + rows
+        previous_month = now.replace(day=1) - timedelta(days=1)
+        try:
+            rows = _treasury_month_history(kind, previous_month.year, previous_month.month) + rows
+        except (requests.RequestException, RuntimeError):
+            pass
     rows = sorted(set(rows), key=lambda x: x[0])
     if not rows:
-        raise RuntimeError(f"Treasury returned no usable observations for {kind}")
+        raise RuntimeError(f"Treasury unavailable for {kind}")
     return rows[-limit:]
 
 
@@ -270,14 +281,24 @@ def fetch_market_snapshot() -> dict[str, MarketReading]:
     dxy_rows = _yahoo_history("DX-Y.NYB")
     out["dxy"] = _make_reading("DXY", dxy_rows, "index", "Yahoo Finance / ICE", False, 0.30, 0.80)
 
-    # Use the U.S. Treasury directly for both nominal and real 10Y yields.
-    # This avoids FRED graph CSV intermittently returning no observations to
-    # GitHub-hosted runners. Treasury publishes both daily tables officially.
-    us10y_rows = _treasury_history("nominal")
-    out["us10y"] = _make_reading("US10Y", us10y_rows, "%", "U.S. Treasury", False, 0.05, 0.10)
+    # Prefer U.S. Treasury, but never let a transient government-site timeout
+    # stop the whole scanner. Yahoo ^TNX is the nominal 10Y fallback; FRED
+    # DFII10 is the real-10Y fallback. Both are explicitly labeled in output.
+    try:
+        us10y_rows = _treasury_history("nominal")
+        us10y_source = "U.S. Treasury"
+    except Exception:
+        us10y_rows = _yahoo_history("^TNX")
+        us10y_source = "Yahoo Finance / ^TNX fallback"
+    out["us10y"] = _make_reading("US10Y", us10y_rows, "%", us10y_source, False, 0.05, 0.10)
 
-    real_rows = _treasury_history("real")
-    out["real_yields"] = _make_reading("10Y Real Yield", real_rows, "%", "U.S. Treasury", False, 0.04, 0.08)
+    try:
+        real_rows = _treasury_history("real")
+        real_source = "U.S. Treasury"
+    except Exception:
+        real_rows = _fred_history("DFII10")
+        real_source = "FRED / U.S. Treasury (DFII10) fallback"
+    out["real_yields"] = _make_reading("10Y Real Yield", real_rows, "%", real_source, False, 0.04, 0.08)
 
     try:
         xau_rows = _xaus_history()
