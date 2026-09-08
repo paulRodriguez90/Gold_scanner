@@ -94,17 +94,17 @@ def calculate_market_confluence(readings: Mapping[str, object]) -> MarketConflue
     if abs(macro_pressure) < 15:
         state = "INDECISION"
     elif direct_conflict:
-        state = "ALCISTA — DEBIL EPERAR" if macro_pressure > 0 else "BAJISTA — DEBIL — ESPERAR"
+        state = "ALCISTA — ESPERAR" if macro_pressure > 0 else "BAJISTA — ESPERAR"
     elif macro_pressure >= 60 and xau_sign >= 0:
         state = "COMPRA FUERTE"
     elif macro_pressure >= 30:
-        state = "COMPRA MODERADA" if xau_sign >= 0 else "ALCISTA — DEBIL — ESPERAR"
+        state = "COMPRA MODERADA" if xau_sign >= 0 else "ALCISTA — ESPERAR"
     elif macro_pressure <= -60 and xau_sign <= 0:
         state = "VENTA FUERTE"
     elif macro_pressure <= -30:
-        state = "VENTA MODERADA" if xau_sign <= 0 else "BAJISTA — DEBIL — ESPERAR"
+        state = "VENTA MODERADA" if xau_sign <= 0 else "BAJISTA — ESPERAR"
     else:
-        state = "ALCISTA — DEBIL — ESPERAR" if macro_pressure > 0 else "BAJISTA — DEBIL— ESPERAR"
+        state = "ALCISTA — ESPERAR" if macro_pressure > 0 else "BAJISTA — ESPERAR"
 
     if incomplete and state in {"COMPRA FUERTE", "COMPRA MODERADA"}:
         state = "ALCISTA — ESPERAR"
