@@ -16,7 +16,7 @@ def run():
     macro_input = {**bls.get("history", {}), "target_range": fed.get("target_range"), "target_history": fed.get("target_history", []), "next_fomc": fed.get("next_fomc")}
     macro = calculate_macro_impact(macro_input)
     now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
-    events = fetch_consensus_events((now.date().replace(day=1)).isoformat(), now.date().isoformat())
+    events = fetch_consensus_events((now.date().replace(day=1)).isoformat(), (now.date()).isoformat())
     surprise = calculate_surprise_impact(macro_input, events)
     combined_score = round(0.55 * confluence.score + 0.25 * macro.score + 0.20 * surprise["score"], 1)
     print_v03_report(fed, bls, markets, confluence, macro, combined_score, surprise)

@@ -11,6 +11,7 @@ import requests
 
 TE_API = "https://api.tradingeconomics.com"
 TE_PUBLIC = {
+    "core_ppi": "https://tradingeconomics.com/united-states/ppi-ex-food-and-energy-mom",
     "cpi": "https://tradingeconomics.com/united-states/consumer-price-index-cpi",
     "core_cpi": "https://tradingeconomics.com/united-states/core-inflation-rate",
     "ppi": "https://tradingeconomics.com/united-states/producer-price-inflation-mom",
@@ -112,6 +113,7 @@ def fetch_consensus_events(start: str, end: str) -> list[EconomicEvent]:
         "cpi": "Consumer Price Index CPI",
         "core_cpi": "Core Inflation Rate",
         "ppi": "Producer Price Inflation MoM",
+        "core_ppi": "PPI Ex Food and Energy MoM",
         "nfp": "Non Farm Payrolls",
         "unemployment": "Unemployment Rate",
     }

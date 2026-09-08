@@ -131,3 +131,21 @@ def test_surprise_scoring_skips_missing_consensus():
     result = calculate_surprise_impact({}, events)
     assert result["events"] == []
     assert result["score"] == 0.0
+
+
+def test_surprise_scoring_reports_missing_consensus_explicitly():
+    from gold_scanner.macro_scoring import calculate_surprise_impact
+    from gold_scanner.sources.calendar import EconomicEvent
+    events = [EconomicEvent("cpi", "2026-08-12", 2.40, 2.50, None, "%", "test", 3, True)]
+    result = calculate_surprise_impact({}, events)
+    assert "CPI" in result["missing_consensus"]
+    assert "Sin consenso" in result["explanation"]
+
+
+def test_surprise_supports_core_ppi():
+    from gold_scanner.macro_scoring import calculate_surprise_impact
+    from gold_scanner.sources.calendar import EconomicEvent
+    events = [EconomicEvent("core_ppi", "2026-08-14", 0.20, 0.10, 0.30, "%", "test", 3, True)]
+    result = calculate_surprise_impact({}, events)
+    assert result["events"][0]["label"] == "Core PPI"
+    assert result["score"] > 0

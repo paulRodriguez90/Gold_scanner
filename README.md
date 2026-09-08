@@ -1,38 +1,34 @@
-# Gold Scanner V0.5
+# Gold Scanner V0.5.1
 
 Scanner macro/market para XAUUSD. No ejecuta operaciones.
 
-## V0.5
+## V0.5.1
 
-Agrega **Actual vs Consensus** para CPI, Core CPI, PPI, NFP y desempleo.
+Mejora la capa de **Actual vs Consensus**:
+- Trading Economics API si existe `TRADING_ECONOMICS_API_KEY`.
+- Fallback a páginas públicas de Trading Economics.
+- Incluye CPI, Core CPI, PPI, Core PPI, NFP y desempleo.
+- Nunca inventa consenso.
+- Reporta explícitamente qué indicadores no tienen consenso.
+- Mantiene el surprise score separado del histórico macro.
+- El evento seleccionado es el último publicado disponible por indicador.
+- Añade Core PPI al análisis de sorpresa.
 
-- Trading Economics es la fuente preferida para consenso y actual.
-- Si existe `TRADING_ECONOMICS_API_KEY`, se usa la API.
-- Sin API key, se intenta la página pública del indicador como fallback.
-- Si no hay consenso, el scanner **no inventa** un forecast y no calcula surprise para ese evento.
-- Surprise score:
-  - CPI/Core CPI/PPI por debajo del consenso: favorable al oro.
-  - NFP por debajo del consenso: favorable al oro.
-  - Desempleo por encima del consenso: favorable al oro.
-- El score combinado pasa a ser:
-  - 55% Market Confluence
-  - 25% Macro Fundamental
-  - 20% Consensus Surprise
-
-## Fuentes
-
-- BLS: CPI, Core CPI, PPI, Core PPI, NFP, desempleo.
-- Federal Reserve: rango objetivo y calendario FOMC.
-- Yahoo / Treasury / FRED / Trading Economics / XAUS: mercado.
-- Trading Economics: consenso económico y actualizaciones de calendario.
+## Pesos combinados
+- 55% Market Confluence
+- 25% Macro Fundamental
+- 20% Consensus Surprise
 
 ## Ejecución
-
 ```bash
 python -m pytest -q
 python -m gold_scanner.main
 ```
 
-## Nota
+## Fuentes
+- BLS: CPI, Core CPI, PPI, Core PPI, NFP, desempleo.
+- Federal Reserve: rango objetivo y calendario FOMC.
+- Yahoo / Treasury / FRED / Trading Economics / XAUS: mercado.
+- Trading Economics: consenso y datos de calendario.
 
-La reacción posterior al dato intradía queda preparada como siguiente capa. V0.5 no usa una reacción inventada ni sustituye consenso faltante por estimaciones propias.
+La reacción posterior al dato intradía sigue reservada para una capa posterior; no se inventa con variaciones diarias.
