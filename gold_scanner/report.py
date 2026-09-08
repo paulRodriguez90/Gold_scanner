@@ -28,8 +28,23 @@ def print_v02_report(fed, bls, markets):
         print("Target range: unavailable")
     print(f"Effective data date: {target_date or 'unavailable'}")
     print("\nBLS LATEST OBSERVATIONS")
-    for name, value in bls["latest"].items():
-        print(f"{name}: {value}")
+    observations = bls.get("observations", bls.get("latest", {}))
+    for name, value in observations.items():
+        if isinstance(value, dict):
+            period = value.get("period_name") or value.get("period") or ""
+            year = value.get("year", "")
+            shown = value.get("value", "n/a")
+            suffix = f" ({period} {year})" if (period or year) else ""
+            print(f"{name}: {shown}{suffix}")
+        else:
+            print(f"{name}: {value}")
+
     print("\nUPCOMING BLS RELEASES")
-    for item in bls["upcoming_releases"][:6]:
-        print(f"- {item['date']} {item['time']} ET — {item['title']}")
+    releases = bls.get("upcoming_releases", bls.get("calendar", []))
+    for item in releases[:6]:
+        if "date" in item:
+            label = f"{item['date']} {item.get('time', '')} ET".strip()
+        else:
+            start = item.get("start", "")
+            label = start.replace("T", " ")[:16]
+        print(f"- {label} — {item.get('title', item.get('summary', ''))}")
