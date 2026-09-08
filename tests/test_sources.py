@@ -77,3 +77,16 @@ def test_market_reading_score_direction():
     r = MarketReading("DXY", 100, 99, 98, 1.01, 2.04, "index", "test", datetime.now(timezone.utc), -80, "BEARISH GOLD", "test")
     assert r.score < 0
     assert r.direction == "BEARISH GOLD"
+
+
+def test_fed_snapshot_target_range_contract(monkeypatch):
+    from gold_scanner.sources import fed
+
+    monkeypatch.setattr(fed, "fetch_target_range", lambda: {
+        "lower": 3.50, "upper": 3.75, "date": "2026-09-07"
+    })
+    monkeypatch.setattr(fed, "fetch_fomc_calendar", lambda: [])
+    snapshot = fed.fetch_v01_snapshot()
+    assert snapshot["target_range"]["lower"] == 3.50
+    assert snapshot["target_range"]["upper"] == 3.75
+    assert snapshot["target_range"]["date"] == "2026-09-07"

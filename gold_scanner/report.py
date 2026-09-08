@@ -16,8 +16,17 @@ def print_v02_report(fed, bls, markets):
         print(f"{r.name}: {r.value:.4f} {r.unit} | 1d {_fmt_change(r.change_1d, r.unit)} | 5d {_fmt_change(r.change_5d, r.unit)}")
         print(f"  -> {r.direction} | score={r.score:+.1f} | source={r.source}")
     print("\nFED")
-    print(f"Target range: {fed['target_lower']:.2f}% - {fed['target_upper']:.2f}%")
-    print(f"Effective data date: {fed['target_date']}")
+    # fetch_v01_snapshot() stores the target range as a nested object.
+    # Keep the report aligned with that contract instead of assuming flat keys.
+    target = fed.get("target_range", {})
+    lower = target.get("lower")
+    upper = target.get("upper")
+    target_date = target.get("date")
+    if lower is not None and upper is not None:
+        print(f"Target range: {lower:.2f}% - {upper:.2f}%")
+    else:
+        print("Target range: unavailable")
+    print(f"Effective data date: {target_date or 'unavailable'}")
     print("\nBLS LATEST OBSERVATIONS")
     for name, value in bls["latest"].items():
         print(f"{name}: {value}")
