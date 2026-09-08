@@ -84,9 +84,42 @@ def test_treasury_history_uses_previous_month_when_current_succeeds_but_is_short
 
 
 def test_treasury_history_propagates_current_month_failure(monkeypatch):
-    monkeypatch.setattr(markets, "_treasury_month_history", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("timeout")))
+    fail = lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("timeout"))
+    monkeypatch.setattr(markets, "_treasury_xml_month_history", fail)
+    monkeypatch.setattr(markets, "_treasury_month_history", fail)
     try:
         markets._treasury_history("real")
         assert False, "Expected RuntimeError"
     except RuntimeError as exc:
-        assert str(exc) == "timeout"
+        assert "timeout" in str(exc)
+
+
+def test_treasury_xml_month_history_parses_mock(monkeypatch):
+    class Response:
+        content = b"""<?xml version=\"1.0\"?><feed xmlns:b=\"urn:example\"><entry><b:recorddate>2026-09-04</b:recorddate><b:bc_10year>2.43</b:bc_10year></entry></feed>"""
+    monkeypatch.setattr(markets, "_get", lambda *args, **kwargs: Response())
+    rows = markets._treasury_xml_month_history("real", 2026, 9)
+    assert rows == [("2026-09-04", 2.43)]
+
+
+def test_unavailable_reading_is_neutral():
+    reading = markets._unavailable_reading("10Y Real Yield", "%", "timeout")
+    assert reading.source == "UNAVAILABLE"
+    assert reading.score == 0.0
+    assert reading.direction == "NEUTRAL"
+    assert reading.change_1d is None
+
+
+def test_market_snapshot_does_not_abort_when_real_yield_sources_fail(monkeypatch):
+    def fail_real(kind, *args, **kwargs):
+        if kind == "real":
+            raise RuntimeError("timeout")
+        return [("2026-09-08", 4.78), ("2026-09-07", 4.77)]
+    monkeypatch.setattr(markets, "_treasury_history", fail_real)
+    monkeypatch.setattr(markets, "_fred_history", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("fred unavailable")))
+    monkeypatch.setattr(markets, "_yahoo_history", lambda symbol, *args, **kwargs: [("2026-09-07", 98.9), ("2026-09-08", 98.8)] if symbol == "DX-Y.NYB" else [("2026-09-07", 4440), ("2026-09-08", 4450)])
+    monkeypatch.setattr(markets, "_xaus_history", lambda: [("2026-09-07", 4440), ("2026-09-08", 4450)])
+    snapshot = markets.fetch_market_snapshot()
+    assert snapshot["real_yields"].source == "UNAVAILABLE"
+    assert snapshot["dxy"].source != "UNAVAILABLE"
+    assert snapshot["xauusd"].source != "UNAVAILABLE"

@@ -6,6 +6,8 @@ import csv
 import io
 import time
 from html.parser import HTMLParser
+import math
+import xml.etree.ElementTree as ET
 from typing import Optional
 
 import requests
@@ -14,6 +16,11 @@ FRED_CSV = "https://fred.stlouisfed.org/graph/fredgraph.csv?id={series}"
 YAHOO_CHART = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 XAUS_HISTORY = "https://xaus.com/api/v1/history"
 TREASURY_TEXT = "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/TextView"
+TREASURY_XML = "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml"
+TREASURY_XML_STATIC = {
+    "nominal": "https://home.treasury.gov/sites/default/files/interest-rates/yield.xml",
+    "real": "https://home.treasury.gov/sites/default/files/interest-rates/real_yield.xml",
+}
 
 HEADERS = {"User-Agent": "GoldScanner/0.2 (+https://github.com/)"}
 
@@ -112,6 +119,68 @@ class _TreasuryTableParser(HTMLParser):
             self.current.append(data)
 
 
+def _xml_local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1].lower()
+
+
+def _treasury_xml_month_history(kind: str, year: int, month: int) -> list[tuple[str, float]]:
+    """Fetch Treasury daily rates through its official XML developer feed."""
+    if kind not in ("nominal", "real"):
+        raise ValueError(f"Unsupported Treasury table kind: {kind}")
+    data_key = "daily_treasury_yield_curve" if kind == "nominal" else "daily_treasury_real_yield_curve"
+    column = "10 yr" if kind == "nominal" else "10 yr"
+    urls = [
+        (TREASURY_XML, {"data": data_key, "field_tdr_date_value_month": f"{year:04d}{month:02d}"}),
+        (TREASURY_XML_STATIC[kind], None),
+    ]
+    last_exc = None
+    for url, params in urls:
+        try:
+            r = _get(url, params=params)
+            root = ET.fromstring(r.content)
+            rows = []
+            for entry in root.iter():
+                if _xml_local_name(entry.tag) != "entry":
+                    continue
+                fields = {}
+                for child in entry.iter():
+                    name = _xml_local_name(child.tag)
+                    text = (child.text or "").strip()
+                    if text and name not in fields:
+                        fields[name] = text
+                date_text = fields.get("b:recorddate") or fields.get("recorddate") or fields.get("d:recorddate")
+                value_text = fields.get("b:bc_10year") or fields.get("bc_10year") or fields.get("d:bc_10year")
+                if not date_text or not value_text:
+                    # Treasury XML commonly uses fields like bc_10year / bc_10year_1.
+                    for k, v in fields.items():
+                        lk = k.lower().replace("_", "")
+                        if date_text is None and "recorddate" in lk:
+                            date_text = v
+                        if value_text is None and "10year" in lk and "30year" not in lk:
+                            value_text = v
+                if not date_text or not value_text or value_text.upper() == "N/A":
+                    continue
+                try:
+                    dt = datetime.fromisoformat(date_text.replace("Z", "+00:00")).date()
+                    value = float(value_text)
+                except (ValueError, TypeError):
+                    try:
+                        dt = datetime.strptime(date_text, "%Y-%m-%d").date()
+                        value = float(value_text)
+                    except (ValueError, TypeError):
+                        continue
+                if dt.year == year and dt.month == month:
+                    rows.append((dt.isoformat(), value))
+            if rows:
+                return sorted(set(rows), key=lambda x: x[0])
+        except (requests.RequestException, ET.ParseError, RuntimeError) as exc:
+            last_exc = exc
+            continue
+    if last_exc:
+        raise last_exc
+    raise RuntimeError(f"Treasury XML returned no {kind} observations for {year}-{month:02d}")
+
+
 def _treasury_month_history(kind: str, year: int, month: int) -> list[tuple[str, float]]:
     """Fetch one month from the U.S. Treasury public daily-rate table.
 
@@ -174,26 +243,33 @@ def _treasury_month_history(kind: str, year: int, month: int) -> list[tuple[str,
 
 
 def _treasury_history(kind: str, limit: int = 8) -> list[tuple[str, float]]:
-    """Best-effort Treasury history without silently substituting stale data.
-
-    The current month is attempted first. Only when that request succeeds but
-    contains too few rows do we add the previous month. If the current-month
-    request itself times out/fails, the exception is propagated so the caller
-    can use a genuinely independent fallback source.
-    """
+    """Best-effort Treasury history using XML first, HTML second."""
     now = datetime.now(timezone.utc)
-    current_rows = _treasury_month_history(kind, now.year, now.month)
-    rows = list(current_rows)
-    if len(rows) < limit:
-        previous_month = now.replace(day=1) - timedelta(days=1)
+    errors = []
+    for loader in (_treasury_xml_month_history, _treasury_month_history):
         try:
-            rows = _treasury_month_history(kind, previous_month.year, previous_month.month) + rows
-        except (requests.RequestException, RuntimeError):
-            pass
-    rows = sorted(set(rows), key=lambda x: x[0])
-    if not rows:
-        raise RuntimeError(f"Treasury unavailable for {kind}")
-    return rows[-limit:]
+            rows = loader(kind, now.year, now.month)
+            if len(rows) < limit:
+                previous_month = now.replace(day=1) - timedelta(days=1)
+                try:
+                    rows = loader(kind, previous_month.year, previous_month.month) + rows
+                except Exception:
+                    pass
+            rows = sorted(set(rows), key=lambda x: x[0])
+            if rows:
+                return rows[-limit:]
+        except Exception as exc:
+            errors.append(exc)
+    raise RuntimeError(f"Treasury unavailable for {kind}: {errors[-1] if errors else 'no data'}")
+
+
+def _unavailable_reading(name: str, unit: str, reason: str) -> MarketReading:
+    return MarketReading(
+        name=name, value=math.nan, previous_1d=None, previous_5d=None,
+        change_1d=None, change_5d=None, unit=unit, source="UNAVAILABLE",
+        observed_at=datetime.now(timezone.utc), score=0.0, direction="NEUTRAL",
+        reason=reason,
+    )
 
 
 def _fred_history(series: str, limit: int = 8) -> list[tuple[str, float]]:
@@ -275,42 +351,49 @@ def _make_reading(name: str, rows: list[tuple[str, float]], unit: str, source: s
 
 
 def fetch_market_snapshot() -> dict[str, MarketReading]:
-    """Fetch DXY, US10Y, 10Y real yield and XAUUSD."""
+    """Fetch market drivers. A failed provider never aborts the full scanner."""
     out: dict[str, MarketReading] = {}
 
-    dxy_rows = _yahoo_history("DX-Y.NYB")
-    out["dxy"] = _make_reading("DXY", dxy_rows, "index", "Yahoo Finance / ICE", False, 0.30, 0.80)
+    try:
+        dxy_rows = _yahoo_history("DX-Y.NYB")
+        out["dxy"] = _make_reading("DXY", dxy_rows, "index", "Yahoo Finance / ICE", False, 0.30, 0.80)
+    except Exception as exc:
+        out["dxy"] = _unavailable_reading("DXY", "index", str(exc))
 
-    # Prefer U.S. Treasury, but never let a transient government-site timeout
-    # stop the whole scanner. Yahoo ^TNX is the nominal 10Y fallback; FRED
-    # DFII10 is the real-10Y fallback. Both are explicitly labeled in output.
     try:
         us10y_rows = _treasury_history("nominal")
         us10y_source = "U.S. Treasury"
     except Exception:
-        us10y_rows = _yahoo_history("^TNX")
-        us10y_source = "Yahoo Finance / ^TNX fallback"
-    out["us10y"] = _make_reading("US10Y", us10y_rows, "%", us10y_source, False, 0.05, 0.10)
+        try:
+            us10y_rows = _yahoo_history("^TNX")
+            us10y_source = "Yahoo Finance / ^TNX fallback"
+        except Exception as exc:
+            out["us10y"] = _unavailable_reading("US10Y", "%", str(exc))
+        else:
+            out["us10y"] = _make_reading("US10Y", us10y_rows, "%", us10y_source, False, 0.05, 0.10)
+    else:
+        out["us10y"] = _make_reading("US10Y", us10y_rows, "%", us10y_source, False, 0.05, 0.10)
 
     try:
         real_rows = _treasury_history("real")
         real_source = "U.S. Treasury"
-    except Exception:
-        real_rows = _fred_history("DFII10")
-        real_source = "FRED / U.S. Treasury (DFII10) fallback"
-    out["real_yields"] = _make_reading("10Y Real Yield", real_rows, "%", real_source, False, 0.04, 0.08)
+        out["real_yields"] = _make_reading("10Y Real Yield", real_rows, "%", real_source, False, 0.04, 0.08)
+    except Exception as treasury_exc:
+        try:
+            real_rows = _fred_history("DFII10")
+            out["real_yields"] = _make_reading("10Y Real Yield", real_rows, "%", "FRED / U.S. Treasury (DFII10) fallback", False, 0.04, 0.08)
+        except Exception as fred_exc:
+            out["real_yields"] = _unavailable_reading("10Y Real Yield", "%", f"Treasury: {treasury_exc}; FRED: {fred_exc}")
 
     try:
         xau_rows = _xaus_history()
-        xau_source = "XAUS XAU/USD spot history"
-        xau_name = "XAUUSD"
+        out["xauusd"] = _make_reading("XAUUSD", xau_rows, "price", "XAUS XAU/USD spot history", True, 0.60, 1.50)
     except Exception:
-        # Yahoo's XAUUSD=X chart symbol is not consistently available to
-        # GitHub-hosted runners. GC=F is a transparent market proxy for gold
-        # futures and is used only as a fallback, never mislabeled as spot.
-        xau_rows = _yahoo_history("GC=F")
-        xau_source = "Yahoo Finance / COMEX Gold futures (proxy)"
-        xau_name = "XAUUSD (GC=F proxy)"
-    out["xauusd"] = _make_reading(xau_name, xau_rows, "price", xau_source, True, 0.60, 1.50)
+        try:
+            xau_rows = _yahoo_history("GC=F")
+            out["xauusd"] = _make_reading("XAUUSD (GC=F proxy)", xau_rows, "price", "Yahoo Finance / COMEX Gold futures (proxy)", True, 0.60, 1.50)
+        except Exception as exc:
+            out["xauusd"] = _unavailable_reading("XAUUSD", "price", str(exc))
 
     return out
+
