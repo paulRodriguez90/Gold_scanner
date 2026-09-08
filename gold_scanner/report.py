@@ -7,17 +7,25 @@ def _fmt_change(value, unit):
     return f"{value:+.3f}{' pp' if unit == '%' else '%'}"
 
 
-def print_v02_report(fed, bls, markets):
-    print("=== GOLD SCANNER V0.2 — DXY / US10Y / REAL YIELDS / XAUUSD ===")
+def print_v03_report(fed, bls, markets, confluence):
+    print("=== GOLD SCANNER V0.3 — MARKET CONFLUENCE ===")
     print(f"Retrieved: {datetime.now(timezone.utc).isoformat()}")
     print("\nMARKET DRIVERS")
     for key in ("dxy", "us10y", "real_yields", "xauusd"):
         r = markets[key]
-        print(f"{r.name}: {r.value:.4f} {r.unit} | 1d {_fmt_change(r.change_1d, r.unit)} | 5d {_fmt_change(r.change_5d, r.unit)}")
+        value = "n/a" if r.value is None else f"{r.value:.4f}"
+        print(f"{r.name}: {value} {r.unit} | 1d {_fmt_change(r.change_1d, r.unit)} | 5d {_fmt_change(r.change_5d, r.unit)}")
         print(f"  -> {r.direction} | score={r.score:+.1f} | source={r.source}")
+
+    print("\nMARKET CONFLUENCE")
+    print(f"Macro pressure (DXY/US10Y/Real Yield): {confluence.macro_pressure:+.1f}")
+    print(f"XAUUSD confirmation: {confluence.xau_confirmation:+.1f}")
+    print(f"Confluence score: {confluence.score:+.1f}")
+    print(f"Conflict: {'YES' if confluence.conflict else 'NO'} | level={confluence.conflict_level}")
+    print(f"Reading: {confluence.state}")
+    print(f"Why: {confluence.explanation}")
+
     print("\nFED")
-    # fetch_v01_snapshot() stores the target range as a nested object.
-    # Keep the report aligned with that contract instead of assuming flat keys.
     target = fed.get("target_range", {})
     lower = target.get("lower")
     upper = target.get("upper")
@@ -27,6 +35,7 @@ def print_v02_report(fed, bls, markets):
     else:
         print("Target range: unavailable")
     print(f"Effective data date: {target_date or 'unavailable'}")
+
     print("\nBLS LATEST OBSERVATIONS")
     observations = bls.get("observations", bls.get("latest", {}))
     for name, value in observations.items():
@@ -48,3 +57,11 @@ def print_v02_report(fed, bls, markets):
             start = item.get("start", "")
             label = start.replace("T", " ")[:16]
         print(f"- {label} — {item.get('title', item.get('summary', ''))}")
+
+    print("\nV0.3 STATUS: MARKET CONFLUENCE ACTIVE; MACRO NEWS SCORING STILL IN PROGRESS.")
+
+# Backward-compatible entry point retained for existing tests/tools.
+def print_v02_report(fed, bls, markets):
+    from .confluence import calculate_market_confluence
+    confluence = calculate_market_confluence(markets)
+    print_v03_report(fed, bls, markets, confluence)

@@ -1,17 +1,29 @@
 # Gold Scanner
 
-## V0.2.4 — DXY + US10Y + real yields + XAUUSD
+## V0.3 — Market Confluence
 
-This version connects the four market drivers that most directly help contextualize gold:
+V0.3 turns the four connected market drivers into a **confluence layer** instead of simply adding their scores.
 
-- **DXY** — ICE US Dollar Index via Yahoo Finance market data.
-- **US10Y** — 10-year U.S. Treasury nominal yield via U.S. Treasury daily yield curve.
-- **10Y real yield** — 10-year inflation-indexed Treasury yield via U.S. Treasury daily real yield curve.
-- **XAUUSD** — daily XAU/USD spot history via XAUS; if unavailable, transparent GC=F (COMEX gold futures) proxy via Yahoo Finance.
+### Logic
 
-The scanner compares 1-day and 5-day movement and converts it into a preliminary factor score from -100 to +100. For gold, rising DXY, nominal yields and real yields are treated as bearish pressure; rising XAUUSD is treated as bullish confirmation.
+- **DXY, US10Y and 10Y real yield** form the macro-pressure block.
+- **XAUUSD** is treated separately as price confirmation.
+- If macro pressure and XAUUSD disagree, the scanner does **not** issue a clean buy/sell state; it moves to `ALCISTA — ESPERAR` or `BAJISTA — ESPERAR` and marks the conflict.
+- If macro drivers themselves strongly disagree, the scanner also marks a conflict.
+- Unavailable sources are ignored in the macro-pressure average rather than being converted into an artificial signal.
 
-**Important:** this is still a market-driver layer, not a complete trading signal. Fed, inflation, employment, China/PBoC, geopolitics, news surprise and reaction analysis will be integrated next.
+### Output
+
+The report now shows:
+
+- Macro pressure: -100 to +100
+- XAUUSD confirmation: -100 to +100
+- Confluence score: -100 to +100
+- Conflict and conflict level
+- Final market reading
+- Human-readable explanation of why the scanner is waiting or confirming
+
+This is still **not a complete trading signal**. Fed, inflation, employment, China/PBoC, geopolitics, news surprise and reaction analysis remain separate layers to be integrated.
 
 ## Run locally
 
@@ -20,7 +32,3 @@ pip install -r requirements.txt
 python -m pytest -q
 python -m gold_scanner.main
 ```
-
-## GitHub Actions
-
-The scheduled/manual workflow runs tests and then the scanner. The report reads the Fed snapshot contract correctly (`target_range.lower/upper/date`).

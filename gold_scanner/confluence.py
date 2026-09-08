@@ -1,0 +1,127 @@
+from dataclasses import dataclass
+from typing import Mapping
+
+from .config import ScannerConfig
+
+
+@dataclass(frozen=True)
+class MarketConfluence:
+    macro_pressure: float
+    xau_confirmation: float
+    score: float
+    state: str
+    conflict: bool
+    conflict_level: str
+    explanation: str
+
+
+def _clamp(value: float, low: float = -100.0, high: float = 100.0) -> float:
+    return max(low, min(high, float(value)))
+
+
+def _sign(value: float, deadband: float = 10.0) -> int:
+    if value > deadband:
+        return 1
+    if value < -deadband:
+        return -1
+    return 0
+
+
+def _reading_score(readings: Mapping[str, object], name: str) -> float | None:
+    reading = readings.get(name)
+    if reading is None:
+        return None
+    value = getattr(reading, "score", None)
+    if value is None:
+        return None
+    source = getattr(reading, "source", "")
+    # An unavailable source must never become artificial bullish/bearish pressure.
+    if source == "UNAVAILABLE":
+        return None
+    return _clamp(value)
+
+
+def calculate_market_confluence(readings: Mapping[str, object]) -> MarketConfluence:
+    """Interpret DXY, nominal yield and real yield as macro pressure.
+
+    XAUUSD is deliberately kept separate as a confirmation signal. We do not
+    simply add the four factor scores: a bullish macro backdrop with a falling
+    gold price is treated as a wait/conflict condition, not as a clean buy.
+    """
+    macro_components = {
+        "dxy": (35.0, _reading_score(readings, "dxy")),
+        "us10y": (30.0, _reading_score(readings, "us10y")),
+        "real_yields": (35.0, _reading_score(readings, "real_yields")),
+    }
+    available = [(weight, score) for weight, score in macro_components.values() if score is not None]
+    if available:
+        macro_pressure = sum(weight * score for weight, score in available) / sum(weight for weight, _ in available)
+    else:
+        macro_pressure = 0.0
+
+    xau = _reading_score(readings, "xauusd")
+    xau_confirmation = xau if xau is not None else 0.0
+
+    macro_sign = _sign(macro_pressure)
+    xau_sign = _sign(xau_confirmation)
+
+    direct_conflict = False
+    conflict_reasons: list[str] = []
+
+    # Conflict inside the three macro drivers.
+    macro_scores = [score for _, score in available]
+    if macro_scores and max(macro_scores) >= 25 and min(macro_scores) <= -25:
+        direct_conflict = True
+        conflict_reasons.append("los drivers macro están divididos")
+
+    # Price confirmation conflict.
+    if macro_sign != 0 and xau_sign != 0 and macro_sign != xau_sign:
+        direct_conflict = True
+        conflict_reasons.append("XAUUSD no confirma la presión macro")
+
+    # XAU confirmation has a smaller numerical role than macro pressure.
+    # It can strengthen a confirmed move, but cannot erase a meaningful macro conflict.
+    score = _clamp(0.80 * macro_pressure + 0.20 * xau_confirmation)
+
+    if abs(macro_pressure) < 15:
+        state = "INDECISION"
+    elif direct_conflict:
+        state = "ALCISTA — ESPERAR" if macro_pressure > 0 else "BAJISTA — ESPERAR"
+    elif macro_pressure >= 60 and xau_sign >= 0:
+        state = "COMPRA FUERTE"
+    elif macro_pressure >= 30:
+        state = "COMPRA MODERADA" if xau_sign >= 0 else "ALCISTA — ESPERAR"
+    elif macro_pressure <= -60 and xau_sign <= 0:
+        state = "VENTA FUERTE"
+    elif macro_pressure <= -30:
+        state = "VENTA MODERADA" if xau_sign <= 0 else "BAJISTA — ESPERAR"
+    else:
+        state = "ALCISTA — ESPERAR" if macro_pressure > 0 else "BAJISTA — ESPERAR"
+
+    if direct_conflict:
+        conflict_level = "ALTO" if len(conflict_reasons) > 1 else "MEDIO"
+    else:
+        conflict_level = "NINGUNO"
+
+    if state.startswith("COMPRA"):
+        explanation = "La presión macro favorece al oro y XAUUSD confirma o no contradice el movimiento."
+    elif state.startswith("VENTA"):
+        explanation = "La presión macro pesa sobre el oro y XAUUSD confirma o no contradice el movimiento."
+    elif direct_conflict:
+        explanation = "; ".join(conflict_reasons) + ". Esperar confirmación."
+    elif macro_sign > 0:
+        explanation = "La presión macro es favorable al oro, pero la confluencia todavía no es suficiente para una señal fuerte."
+    elif macro_sign < 0:
+        explanation = "La presión macro es desfavorable al oro, pero la confluencia todavía no es suficiente para una señal fuerte."
+    else:
+        explanation = "Los drivers disponibles no muestran una dirección macro clara."
+
+    return MarketConfluence(
+        macro_pressure=round(macro_pressure, 1),
+        xau_confirmation=round(xau_confirmation, 1),
+        score=round(score, 1),
+        state=state,
+        conflict=direct_conflict,
+        conflict_level=conflict_level,
+        explanation=explanation,
+    )
