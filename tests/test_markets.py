@@ -1,17 +1,43 @@
-from datetime import datetime, timezone
-
-from gold_scanner.sources.markets import MarketReading, _make_reading
+from gold_scanner.sources import markets
 
 
-def test_rising_dxy_is_bearish_gold():
-    rows = [("2026-09-01", 100.0), ("2026-09-02", 100.2), ("2026-09-03", 100.4),
-            ("2026-09-04", 100.6), ("2026-09-05", 100.8), ("2026-09-06", 101.0)]
-    r = _make_reading("DXY", rows, "index", "test", False, 0.30, 0.80)
-    assert r.score < 0
+def test_pct_change():
+    assert round(markets._pct_change(110, 100), 2) == 10.0
 
 
-def test_falling_real_yield_is_bullish_gold():
-    rows = [("2026-09-01", 2.50), ("2026-09-02", 2.49), ("2026-09-03", 2.48),
-            ("2026-09-04", 2.47), ("2026-09-05", 2.46), ("2026-09-06", 2.40)]
-    r = _make_reading("10Y Real Yield", rows, "%", "test", False, 0.04, 0.08)
-    assert r.score > 0
+def test_score_direction():
+    score = markets._signed_score(-0.3, -0.8, 0.3, 0.8, positive_is_bullish=False)
+    assert score == 100.0
+    assert markets._direction(score) == "BULLISH GOLD"
+
+
+def test_make_reading_yield_uses_percentage_points():
+    rows = [("2026-09-01", 4.00), ("2026-09-02", 4.05), ("2026-09-03", 4.10),
+            ("2026-09-04", 4.15), ("2026-09-07", 4.20), ("2026-09-08", 4.25)]
+    reading = markets._make_reading("US10Y", rows, "%", "U.S. Treasury", False, 0.05, 0.10)
+    assert round(reading.change_1d, 3) == 0.05
+    assert round(reading.change_5d, 3) == 0.25
+
+
+def test_treasury_parser():
+    html = '''
+    <table><tr><th>Date</th><th>5 YR</th><th>10 YR</th></tr>
+    <tr><td>09/03/2026</td><td>2.10</td><td>2.42</td></tr>
+    <tr><td>09/04/2026</td><td>2.12</td><td>2.40</td></tr></table>
+    '''
+    parser = markets._TreasuryTableParser()
+    parser.feed(html)
+    assert [r for r in parser.rows if r[0] == "09/04/2026"][0][2] == "2.40"
+
+
+def test_treasury_month_history_parses_mock(monkeypatch):
+    class Response:
+        text = '''
+        <table><tr><th>Date</th><th>5 YR</th><th>7 YR</th><th>10 YR</th></tr>
+        <tr><td>09/03/2026</td><td>2.17</td><td>2.29</td><td>2.43</td></tr>
+        <tr><td>09/04/2026</td><td>2.18</td><td>2.30</td><td>2.42</td></tr></table>
+        '''
+
+    monkeypatch.setattr(markets, "_get", lambda *args, **kwargs: Response())
+    rows = markets._treasury_month_history("real", 2026, 9)
+    assert rows[-1] == ("2026-09-04", 2.42)
