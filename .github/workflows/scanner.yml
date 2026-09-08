@@ -1,0 +1,28 @@
+name: Gold Scanner
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Initial heartbeat. Data connectors will later determine whether
+    # a notification is necessary.
+    - cron: "*/15 * * * *"
+      timezone: "America/Argentina/Buenos_Aires"
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: pytest -q
+
+      - name: Run scanner
+        run: python -m gold_scanner.main
