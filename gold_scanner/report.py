@@ -8,7 +8,7 @@ def _fmt_change(value, unit):
 
 
 def print_v03_report(fed, bls, markets, confluence, macro=None, combined_score=None, surprise=None):
-    print("=== GOLD SCANNER V0.5.2 — MARKET + MACRO ===")
+    print("=== GOLD SCANNER V0.5.2 FIXED — MARKET + MACRO ===")
     print(f"Retrieved: {datetime.now(timezone.utc).isoformat()}")
     print("\nMARKET DRIVERS")
     for key in ("dxy", "us10y", "real_yields", "xauusd"):
@@ -101,7 +101,7 @@ def print_v03_report(fed, bls, markets, confluence, macro=None, combined_score=N
         local_label = dt.strftime("%Y-%m-%d %H:%M UTC")
         print(f"- {local_label} — {item.get('title', item.get('summary', ''))}")
 
-    print("\nV0.5.2 STATUS: MARKET CONFLUENCE + MACRO FUNDAMENTAL + CONSENSUS SURPRISE SCORING ACTIVE; CONSENSUS FALLBACK IMPROVED.")
+    print("\nV0.5.2 FIXED STATUS: MARKET CONFLUENCE + MACRO FUNDAMENTAL + CONSENSUS SURPRISE SCORING ACTIVE; CONSENSUS FALLBACK IMPROVED.")
 
 # Backward-compatible entry point retained for existing tests/tools.
 def print_v02_report(fed, bls, markets):

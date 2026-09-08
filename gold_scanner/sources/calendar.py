@@ -321,13 +321,12 @@ def fetch_consensus_events(start: str, end: str) -> list[EconomicEvent]:
             found.extend(_event_from_te(x, key) for x in items)
         except Exception:
             pass
-        if not found:
-            try:
-                event = _public_page_event(key, TE_PUBLIC[key])
-                if event and event.consensus is not None:
-                    found.append(event)
-            except Exception:
-                pass
+        # Do not use the legacy Trading Economics page-text fallback here.
+        # Its rendered page contains unrelated numeric values (including
+        # dates/years and summary statistics) and does not expose a reliable
+        # event date/Actual/Consensus tuple. Accepting it can manufacture
+        # nonsense events such as actual=2025, consensus=2026.
+        # We only trust the structured TE API or structured public calendars.
         if not found:
             try:
                 found = _public_source_events(key, MYFXBOOK_PUBLIC[key], "Myfxbook")
