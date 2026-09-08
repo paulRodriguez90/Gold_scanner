@@ -161,11 +161,11 @@ def _surprise_score(actual, consensus, scale, positive_bullish=True):
 
 
 def calculate_surprise_impact(snapshot: dict, events=None) -> dict:
-    """Calculate actual-vs-consensus surprise only for released events.
+    """Calculate actual-vs-consensus surprise and expose upcoming consensus.
 
-    Consensus is never inferred. Missing consensus is reported explicitly.
-    The latest released event is selected per indicator; historical releases
-    are retained only when the event source provides them.
+    Consensus is never inferred. Released events contribute to the score;
+    future events are reported separately so their forecasts can be monitored
+    before the release.
     """
     events = events or []
     specs = [
@@ -176,29 +176,43 @@ def calculate_surprise_impact(snapshot: dict, events=None) -> dict:
         (("nfp",), "NFP", 150_000.0, False),
         (("unemployment",), "Unemployment", 0.15, True),
     ]
-    rows = []
+    labels = {k[0]: label for k, label, _, _ in specs}
+    scales = {k[0]: (scale, bullish) for k, _, scale, bullish in specs}
+    released_rows = []
+    upcoming_rows = []
     missing_consensus = []
-    for keys, label, scale, positive_bullish in specs:
-        e = _latest_event(events, keys)
-        if not e:
+    for e in events:
+        if e.key not in labels:
             continue
+        label = labels[e.key]
+        scale, positive_bullish = scales[e.key]
         if e.actual is None:
+            if e.consensus is not None:
+                upcoming_rows.append({"key": e.key, "label": label, "consensus": e.consensus, "previous": e.previous, "date": e.date, "source": e.source, "release_time": e.release_time})
             continue
         if e.consensus is None:
             missing_consensus.append(label)
             continue
         score = _surprise_score(e.actual, e.consensus, scale, positive_bullish)
-        rows.append({
+        released_rows.append({
             "key": e.key, "label": label, "actual": e.actual,
             "consensus": e.consensus, "previous": e.previous,
             "surprise": e.actual - e.consensus, "score": round(score, 1),
             "date": e.date, "source": e.source, "release_time": e.release_time,
         })
+    # Keep only the latest released event per indicator for scoring.
+    latest = {}
+    for row in released_rows:
+        current = latest.get(row["key"])
+        if current is None or (row["date"], row.get("release_time") or "") > (current["date"], current.get("release_time") or ""):
+            latest[row["key"]] = row
+    rows = list(latest.values())
+    upcoming_rows.sort(key=lambda r: (r["date"], r["key"]))
     if not rows:
         msg = "No hay consenso disponible para calcular sorpresas."
         if missing_consensus:
-            msg += " Sin consenso: " + ", ".join(missing_consensus) + "."
-        return {"score": 0.0, "state": "SIN CONSENSO", "events": [], "missing_consensus": missing_consensus, "explanation": msg}
+            msg += " Sin consenso: " + ", ".join(sorted(set(missing_consensus)) ) + "."
+        return {"score": 0.0, "state": "SIN CONSENSO", "events": [], "upcoming": upcoming_rows, "missing_consensus": sorted(set(missing_consensus)), "explanation": msg}
     weights = {"cpi": .20, "core_cpi": .20, "ppi": .15, "core_ppi": .10, "nfp": .20, "unemployment": .15}
     total_w = sum(weights[r["key"]] for r in rows)
     score = clamp(sum(r["score"] * weights[r["key"]] for r in rows) / total_w)
@@ -207,5 +221,5 @@ def calculate_surprise_impact(snapshot: dict, events=None) -> dict:
     else: state = "MIXTO / LEVE"
     explanation = "; ".join(f'{r["label"]} {r["score"]:+.1f}' for r in rows)
     if missing_consensus:
-        explanation += "; sin consenso: " + ", ".join(missing_consensus)
-    return {"score": round(score,1), "state": state, "events": rows, "missing_consensus": missing_consensus, "explanation": explanation}
+        explanation += "; sin consenso: " + ", ".join(sorted(set(missing_consensus)))
+    return {"score": round(score,1), "state": state, "events": rows, "upcoming": upcoming_rows, "missing_consensus": sorted(set(missing_consensus)), "explanation": explanation}

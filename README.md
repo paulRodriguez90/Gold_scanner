@@ -1,8 +1,8 @@
-# Gold Scanner V0.5.1
+# Gold Scanner V0.5.2
 
 Scanner macro/market para XAUUSD. No ejecuta operaciones.
 
-## V0.5.1
+## V0.5.2
 
 Mejora la capa de **Actual vs Consensus**:
 - Trading Economics API si existe `TRADING_ECONOMICS_API_KEY`.

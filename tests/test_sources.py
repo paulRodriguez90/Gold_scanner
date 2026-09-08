@@ -149,3 +149,70 @@ def test_surprise_supports_core_ppi():
     result = calculate_surprise_impact({}, events)
     assert result["events"][0]["label"] == "Core PPI"
     assert result["score"] > 0
+
+
+def test_myfxbook_calendar_parser_reads_previous_consensus_actual():
+    from gold_scanner.sources.calendar import _parse_public_calendar_rows
+    html = """
+    <table><tr><th>Date</th><th>Previous</th><th>Consensus</th><th>Actual</th></tr>
+    <tr><td>Aug 12, 2026 12:30</td><td>333.95</td><td>333.99</td><td>333.92</td></tr>
+    <tr><td>Sep 11, 2026 12:30</td><td>—</td><td>334.85</td><td>—</td></tr>
+    </table>
+    """
+    rows = _parse_public_calendar_rows(html, "cpi", "Myfxbook")
+    assert len(rows) == 2
+    released = next(x for x in rows if x.actual is not None)
+    upcoming = next(x for x in rows if x.actual is None)
+    assert released.previous == 333.95
+    assert released.consensus == 333.99
+    assert released.actual == 333.92
+    assert upcoming.consensus == 334.85
+    assert upcoming.released is False
+
+
+def test_consensus_source_cascade_uses_myfxbook_when_te_fails(monkeypatch):
+    from gold_scanner.sources import calendar
+    monkeypatch.setattr(calendar, "_api_events", lambda *a, **k: [])
+    monkeypatch.setattr(calendar, "_public_page_event", lambda *a, **k: None)
+    monkeypatch.setattr(calendar, "_forexfactory_events", lambda: [])
+    monkeypatch.setattr(calendar, "_public_source_events", lambda key, url, source: (
+        [calendar.EconomicEvent(key, "2026-09-04", 162000.0, 21000.0, 56000.0, source=source, released=True)]
+        if source == "Myfxbook" and key == "nfp" else []
+    ))
+    rows = calendar.fetch_consensus_events("2026-09-01", "2026-09-08")
+    nfp = next(x for x in rows if x.key == "nfp")
+    assert nfp.source == "Myfxbook"
+    assert nfp.consensus == 56000.0
+
+
+def test_consensus_source_cascade_uses_investing_when_myfxbook_fails(monkeypatch):
+    from gold_scanner.sources import calendar
+    monkeypatch.setattr(calendar, "_api_events", lambda *a, **k: [])
+    monkeypatch.setattr(calendar, "_public_page_event", lambda *a, **k: None)
+    monkeypatch.setattr(calendar, "_forexfactory_events", lambda: [])
+    def fake(key, url, source):
+        if source == "Investing.com" and key == "ppi":
+            return [calendar.EconomicEvent(key, "2026-08-13", 0.0, -0.1, 0.2, source=source, released=True)]
+        return []
+    monkeypatch.setattr(calendar, "_public_source_events", fake)
+    rows = calendar.fetch_consensus_events("2026-09-01", "2026-09-08")
+    ppi = next(x for x in rows if x.key == "ppi")
+    assert ppi.source == "Investing.com"
+    assert ppi.consensus == 0.2
+
+
+
+def test_forexfactory_parser_reads_usd_event():
+    from gold_scanner.sources.calendar import _parse_forexfactory_events
+    html = """
+    <table>
+      <tr><td>Thu Sep 10</td></tr>
+      <tr><td>8:30am</td><td>USD</td><td>High</td><td>Consumer Price Index m/m</td><td>0.4%</td><td>0.3%</td><td>0.2%</td></tr>
+    </table>
+    """
+    rows = _parse_forexfactory_events(html)
+    assert rows
+    assert rows[0].key == "cpi"
+    assert rows[0].actual == 0.4
+    assert rows[0].consensus == 0.3
+    assert rows[0].previous == 0.2
