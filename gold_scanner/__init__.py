@@ -1,0 +1,1 @@
+"""Gold Scanner package."""
