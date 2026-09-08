@@ -20,10 +20,18 @@ def classify(score: float) -> str:
     return "VENTA FUERTE"
 
 def weighted_score(factor_scores: dict[str, float]) -> float:
+    """Calculate the global score against the full configured weight set.
+
+    Missing factors contribute 0 (neutral); they do not cause the known
+    factors to be re-normalized upward.
+    """
+    total_weight = sum(ScannerConfig.factor_weights.values())
+    if not total_weight:
+        return 0.0
+
     total = 0.0
-    weight_total = 0.0
     for name, weight in ScannerConfig.factor_weights.items():
-        if name in factor_scores:
-            total += clamp(factor_scores[name]) * weight
-            weight_total += weight
-    return clamp(total / weight_total if weight_total else 0.0)
+        score = clamp(factor_scores.get(name, 0.0))
+        total += score * weight
+
+    return clamp(total / total_weight)
