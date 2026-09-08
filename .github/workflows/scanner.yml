@@ -3,7 +3,7 @@ name: Gold Scanner
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "*/30 * * * *"
       timezone: "America/Argentina/Buenos_Aires"
 
 jobs:
@@ -30,6 +30,9 @@ jobs:
           key: gold-scanner-macro-state-${{ github.run_id }}
           restore-keys: |
             gold-scanner-macro-state-
+
+      - name: Ensure macro state exists
+        run: python -c "from gold_scanner.macro_state import load_state, save_state; save_state(load_state())"
 
       - name: Run tests
         run: python -m pytest -q

@@ -58,10 +58,24 @@ def update_macro_context(state: dict[str, Any], macro_input: dict[str, Any]) -> 
         latest = history[0]
         if not isinstance(latest, dict) or latest.get('value') is None:
             continue
+        previous = context.get(key) if isinstance(context.get(key), dict) else {}
+        old_history = previous.get('history') if isinstance(previous.get('history'), list) else []
+        merged = []
+        seen = set()
+        for row in list(history) + old_history:
+            if not isinstance(row, dict) or row.get('value') is None:
+                continue
+            ident = (row.get('date'), row.get('period'), row.get('value'))
+            if ident in seen:
+                continue
+            seen.add(ident)
+            merged.append(dict(row))
+        merged.sort(key=lambda r: (r.get('date') or '', r.get('period') or ''), reverse=True)
         context[key] = {
             'value': latest.get('value'),
             'date': latest.get('date'),
             'period_name': latest.get('period_name'),
+            'history': merged[:24],
             'updated_at': _now(),
         }
     return state

@@ -7,7 +7,7 @@ def _fmt_change(value, unit):
     return f"{value:+.3f}{' pp' if unit == '%' else '%'}"
 
 
-def print_v03_report(fed, bls, markets, confluence, macro=None, combined_score=None, surprise=None):
+def print_v03_report(fed, bls, markets, confluence, macro=None, combined_score=None, surprise=None, errors=None, state=None):
     print("=== GOLD SCANNER V0.6 — PERSISTENT MACRO CONTEXT ===")
     print(f"Retrieved: {datetime.now(timezone.utc).isoformat()}")
     print("\nMARKET DRIVERS")
@@ -68,6 +68,15 @@ def print_v03_report(fed, bls, markets, confluence, macro=None, combined_score=N
         print("Target range: unavailable")
     print(f"Effective data date: {target_date or 'unavailable'}")
 
+    print("\nMACRO CONTEXT VIGENTE")
+    context = (state or {}).get("macro_context", {})
+    if context:
+        for key, row in sorted(context.items()):
+            if isinstance(row, dict):
+                print(f"{key}: {row.get('value', 'n/a')} | date={row.get('date', 'n/a')}")
+    else:
+        print("Sin contexto macro persistido todavía.")
+
     print("\nBLS LATEST OBSERVATIONS")
     observations = bls.get("observations", bls.get("latest", {}))
     for name, value in observations.items():
@@ -102,7 +111,11 @@ def print_v03_report(fed, bls, markets, confluence, macro=None, combined_score=N
         local_label = dt.strftime("%Y-%m-%d %H:%M UTC")
         print(f"- {local_label} — {item.get('title', item.get('summary', ''))}")
 
-    print("\nV0.5.3 STATUS: MARKET CONFLUENCE + MACRO FUNDAMENTAL + NORMALIZED CONSENSUS SURPRISE SCORING ACTIVE.")
+    print("\nV0.6 STATUS: MARKET + MACRO CONTEXT PERSISTENT; LAST VALID SURPRISE REMAINS ACTIVE UNTIL A NEW RELEASE.")
+    if errors:
+        print("\nSOURCE WARNINGS")
+        for error in errors:
+            print(f"- {error}")
 
 # Backward-compatible entry point retained for existing tests/tools.
 def print_v02_report(fed, bls, markets):

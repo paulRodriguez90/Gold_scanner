@@ -150,30 +150,63 @@ def fetch_release_calendar(timeout: int = 20) -> list[dict]:
     return events or _fallback_release_calendar()
 
 
-def fetch_latest_series(series_id: str, timeout: int = 20) -> dict:
-    """Fetch the latest observation from the public BLS API v1.
+def _request_batch(series_ids: list[str], startyear: str | None = None, endyear: str | None = None, timeout: int = 20) -> dict:
+    """Fetch multiple BLS series in one API request.
 
-    BLS v1 uses GET with the series ID in the URL for a single-series
-    request. Passing ``series_id`` as a query parameter to the collection
-    endpoint can return HTTP 415 (Unsupported Media Type).
+    BLS officially supports POST requests with multiple series IDs. Using one
+    batch request is important because the GitHub scanner runs periodically
+    and the public BLS quota is request-based.
     """
-    url = f"{BLS_API_URL}{series_id}"
-    r = requests.get(
-        url,
+    payload = {"seriesid": list(series_ids)}
+    if startyear is not None:
+        payload["startyear"] = str(startyear)
+    if endyear is not None:
+        payload["endyear"] = str(endyear)
+    r = requests.post(
+        BLS_API_URL,
+        json=payload,
         timeout=timeout,
-        headers={"Accept": "application/json"},
+        headers={"Accept": "application/json", "Content-Type": "application/json"},
     )
     r.raise_for_status()
-    payload = r.json()
+    data = r.json()
+    if data.get("status") != "REQUEST_SUCCEEDED":
+        raise RuntimeError(data.get("message", ["Unknown BLS error"]))
+    return data
 
+
+def _rows_from_payload(payload: dict, limit: int | None = None) -> dict[str, list[dict]]:
+    result = {}
+    for series in payload.get("Results", {}).get("series", []):
+        sid = series.get("seriesID")
+        rows = []
+        for item in series.get("data", []):
+            try:
+                rows.append({
+                    "date": f"{item['year']}-{item['period'][1:]}",
+                    "year": item["year"],
+                    "period": item["period"],
+                    "period_name": item.get("periodName"),
+                    "value": float(item["value"]),
+                })
+            except (KeyError, ValueError, TypeError):
+                continue
+        result[sid] = rows[:limit] if limit else rows
+    return result
+
+
+def fetch_latest_series(series_id: str, timeout: int = 20) -> dict:
+    """Fetch the latest observation for one series (kept for compatibility/tests)."""
+    url = f"{BLS_API_URL}{series_id}"
+    r = requests.get(url, timeout=timeout, headers={"Accept": "application/json"})
+    r.raise_for_status()
+    payload = r.json()
     if payload.get("status") != "REQUEST_SUCCEEDED":
         raise RuntimeError(payload.get("message", ["Unknown BLS error"]))
-
     series = payload["Results"]["series"][0]
     data = series.get("data", [])
     if not data:
         raise RuntimeError(f"No BLS data returned for {series_id}")
-
     latest = data[0]
     return {
         "series_id": series_id,
@@ -184,40 +217,41 @@ def fetch_latest_series(series_id: str, timeout: int = 20) -> dict:
     }
 
 
-
 def fetch_series_history(series_id: str, limit: int = 24, timeout: int = 20) -> list[dict]:
-    url = f"{BLS_API_URL}{series_id}"
-    r = requests.get(url, timeout=timeout, headers={"Accept": "application/json"})
-    r.raise_for_status()
-    payload = r.json()
-    if payload.get("status") != "REQUEST_SUCCEEDED":
-        raise RuntimeError(payload.get("message", ["Unknown BLS error"]))
-    data = payload["Results"]["series"][0].get("data", [])
-    rows=[]
-    for item in data[:limit]:
-        try:
-            rows.append({"date": f"{item['year']}-{item['period'][1:]}", "year": item["year"], "period": item["period"], "period_name": item.get("periodName"), "value": float(item["value"])})
-        except (KeyError, ValueError):
-            continue
-    return rows
+    """Fetch history for one series (compatibility helper)."""
+    payload = _request_batch([series_id], timeout=timeout)
+    return _rows_from_payload(payload, limit=limit).get(series_id, [])
+
 
 def fetch_macro_history(timeout: int = 20) -> dict:
-    out={}
-    for name, sid in SERIES.items():
-        try:
-            out[name]=fetch_series_history(sid, timeout=timeout)
-        except requests.RequestException:
-            out[name]=[]
-        except Exception:
-            out[name]=[]
-    return out
+    """Fetch all Gold Scanner BLS series in a single request."""
+    series_ids = list(SERIES.values())
+    payload = _request_batch(series_ids, timeout=timeout)
+    by_id = _rows_from_payload(payload, limit=24)
+    return {name: by_id.get(series_id, []) for name, series_id in SERIES.items()}
+
+
+def _observations_from_history(history: dict) -> dict:
+    observations = {}
+    for name, rows in history.items():
+        if not rows:
+            continue
+        latest = rows[0]
+        observations[name] = {
+            "series_id": SERIES[name],
+            "year": latest.get("year"),
+            "period": latest.get("period"),
+            "period_name": latest.get("period_name"),
+            "value": latest.get("value"),
+        }
+    return observations
 
 
 def fetch_v01_snapshot() -> dict:
-    """Return the V0.1 BLS snapshot: calendar + latest core observations."""
+    """Return BLS calendar + all latest observations with one API request."""
     calendar = fetch_release_calendar()
-    observations = {name: fetch_latest_series(series_id) for name, series_id in SERIES.items()}
     history = fetch_macro_history()
+    observations = _observations_from_history(history)
     return {
         "source": "BLS",
         "retrieved_at": datetime.now(timezone.utc).isoformat(),
