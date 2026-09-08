@@ -1,39 +1,26 @@
-# Gold Scanner — V0.1.2
+# Gold Scanner
 
-V0.1.2 keeps the real BLS/Fed data connections from V0.1 and fixes a GitHub Actions compatibility issue with the BLS `.ics` calendar endpoint.
+## V0.2 — DXY + US10Y + real yields + XAUUSD
 
-## What changed
+This version connects the four market drivers that most directly help contextualize gold:
 
-- BLS `.ics` calendar is attempted first.
-- If BLS returns an HTTP/network error (including `403 Forbidden` from automated runners), the scanner uses an official 2026 fallback schedule for the key releases relevant to gold:
-  - Employment Situation / NFP
-  - CPI
-  - PPI
-  - JOLTS
-- The BLS Public Data API v1 remains the source for the latest observations.
-- The scanner still does **not** calculate market bias yet. V0.1.2 is only a reliable real-data connection layer.
+- **DXY** — ICE US Dollar Index via Yahoo Finance market data.
+- **US10Y** — 10-year U.S. Treasury nominal yield via FRED series `DGS10`.
+- **10Y real yield** — 10-year inflation-indexed Treasury yield via FRED series `DFII10`.
+- **XAUUSD** — spot gold via Yahoo Finance, with a Stooq quote fallback.
+
+The scanner compares 1-day and 5-day movement and converts it into a preliminary factor score from -100 to +100. For gold, rising DXY, nominal yields and real yields are treated as bearish pressure; rising XAUUSD is treated as bullish confirmation.
+
+**Important:** this is still a market-driver layer, not a complete trading signal. Fed, inflation, employment, China/PBoC, geopolitics, news surprise and reaction analysis will be integrated next.
 
 ## Run locally
 
 ```bash
-python -m pip install -r requirements.txt
+pip install -r requirements.txt
 python -m pytest -q
 python -m gold_scanner.main
 ```
 
 ## GitHub Actions
 
-The workflow runs every 15 minutes and can also be launched manually with **Run workflow**.
-
-A successful run should finish with:
-
-```text
-CURRENT GOLD SCORE: 0.0
-STATE: INDECISION
-V0.1 STATUS: DATA CONNECTIONS OK; BIAS ENGINE NOT ACTIVE.
-```
-
-
-## V0.1.2
-- Fixed BLS Public Data API single-series request: v1 requires the series ID in the URL for GET requests.
-- Added a regression test for the BLS request format.
+The existing scheduled/manual workflow runs tests and then the scanner.

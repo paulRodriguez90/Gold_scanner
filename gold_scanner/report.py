@@ -1,43 +1,26 @@
-from __future__ import annotations
-
 from datetime import datetime, timezone
 
 
-def print_v01_report(fed: dict, bls: dict) -> None:
-    print("\n=== GOLD SCANNER V0.1 — REAL DATA CHECK ===")
+def _fmt_change(value, unit):
+    if value is None:
+        return "n/a"
+    return f"{value:+.3f}{' pp' if unit == '%' else '%'}"
+
+
+def print_v02_report(fed, bls, markets):
+    print("=== GOLD SCANNER V0.2 — DXY / US10Y / REAL YIELDS / XAUUSD ===")
     print(f"Retrieved: {datetime.now(timezone.utc).isoformat()}")
-
-    target = fed["target_range"]
+    print("\nMARKET DRIVERS")
+    for key in ("dxy", "us10y", "real_yields", "xauusd"):
+        r = markets[key]
+        print(f"{r.name}: {r.value:.4f} {r.unit} | 1d {_fmt_change(r.change_1d, r.unit)} | 5d {_fmt_change(r.change_5d, r.unit)}")
+        print(f"  -> {r.direction} | score={r.score:+.1f} | source={r.source}")
     print("\nFED")
-    print(f"Target range: {target['lower']:.2f}% - {target['upper']:.2f}%")
-    print(f"Effective data date: {target['date']}")
-
-    print("\nNEXT FOMC")
-    for meeting in fed["fomc_2026"]:
-        if meeting["month"] == "September":
-            print(
-                f"September {meeting['start_day']}-{meeting['end_day']}, "
-                f"{meeting['year']}  <-- next scheduled 2026 meeting"
-            )
-        else:
-            print(
-                f"{meeting['month']} {meeting['start_day']}-{meeting['end_day']}, "
-                f"{meeting['year']}"
-            )
-
+    print(f"Target range: {fed['target_lower']:.2f}% - {fed['target_upper']:.2f}%")
+    print(f"Effective data date: {fed['target_date']}")
     print("\nBLS LATEST OBSERVATIONS")
-    for name, obs in bls["observations"].items():
-        print(
-            f"{name}: {obs['value']} "
-            f"({obs['year']} {obs['period_name']})"
-        )
-
+    for name, value in bls["latest"].items():
+        print(f"{name}: {value}")
     print("\nUPCOMING BLS RELEASES")
-    important = ("Consumer Price Index", "Producer Price Index", "Employment Situation")
-    count = 0
-    for event in bls["calendar"]:
-        if any(term in event["title"] for term in important):
-            print(f"{event['start']} | {event['title']}")
-            count += 1
-        if count >= 12:
-            break
+    for item in bls["upcoming_releases"][:6]:
+        print(f"- {item['date']} {item['time']} ET — {item['title']}")

@@ -68,3 +68,12 @@ def test_bls_single_series_uses_path(monkeypatch):
     assert seen["url"].endswith("/CUUR0000SA0")
     assert "params" not in seen["kwargs"]
     assert result["value"] == 325.0
+
+
+def test_market_reading_score_direction():
+    from datetime import datetime, timezone
+    from gold_scanner.sources.markets import MarketReading
+
+    r = MarketReading("DXY", 100, 99, 98, 1.01, 2.04, "index", "test", datetime.now(timezone.utc), -80, "BEARISH GOLD", "test")
+    assert r.score < 0
+    assert r.direction == "BEARISH GOLD"
