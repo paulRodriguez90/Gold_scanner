@@ -63,3 +63,16 @@ def test_neutral_market_is_indecision():
     })
     assert result.state == "INDECISION"
     assert result.conflict is False
+
+
+def test_missing_core_macro_factor_caps_actionable_state():
+    result = calculate_market_confluence({
+        "dxy": r(90),
+        "us10y": r(70),
+        "real_yields": r(99, "UNAVAILABLE"),
+        "xauusd": r(70),
+    })
+    assert result.available_macro_factors == 2
+    assert result.missing_macro_factors == ("real_yields",)
+    assert result.state == "ALCISTA — ESPERAR"
+    assert "Datos incompletos" in result.explanation

@@ -123,3 +123,27 @@ def test_market_snapshot_does_not_abort_when_real_yield_sources_fail(monkeypatch
     assert snapshot["real_yields"].source == "UNAVAILABLE"
     assert snapshot["dxy"].source != "UNAVAILABLE"
     assert snapshot["xauusd"].source != "UNAVAILABLE"
+
+
+def test_treasury_history_uses_latest_available_prior_business_day(monkeypatch):
+    def fake_month(kind, year, month):
+        if (year, month) == (2026, 9):
+            return [("2026-09-04", 2.43)]
+        return []
+    monkeypatch.setattr(markets, "_treasury_xml_month_history", fake_month)
+    monkeypatch.setattr(markets, "_treasury_month_history", fake_month)
+    rows = markets._treasury_history("real", limit=2)
+    assert rows[-1] == ("2026-09-04", 2.43)
+
+
+def test_report_marks_previous_observation(capsys):
+    from gold_scanner.report import print_v02_report
+    from datetime import datetime, timezone
+    old = datetime(2026, 9, 4, tzinfo=timezone.utc)
+    reading = markets.MarketReading("10Y Real Yield", 2.43, 2.42, 2.40, 0.01, 0.03, "%", "U.S. Treasury", old, -35.6, "BEARISH GOLD", "test")
+    same = markets.MarketReading("DXY", 98, 99, 100, -1, -2, "index", "test", old, 79.3, "BULLISH GOLD", "test")
+    fed = {"target_range": {"lower": 3.5, "upper": 3.75, "date": "2026-09-04"}}
+    bls = {"latest": {}, "upcoming_releases": []}
+    print_v02_report(fed, bls, {"dxy": same, "us10y": same, "real_yields": reading, "xauusd": same})
+    output = capsys.readouterr().out
+    assert "dato anterior (2026-09-04)" in output

@@ -14,12 +14,18 @@ def print_v03_report(fed, bls, markets, confluence):
     for key in ("dxy", "us10y", "real_yields", "xauusd"):
         r = markets[key]
         value = "n/a" if r.value is None else f"{r.value:.4f}"
+        observed_date = r.observed_at.date().isoformat() if r.observed_at else None
+        today = datetime.now(timezone.utc).date().isoformat()
+        freshness = "actual" if observed_date == today else f"dato anterior ({observed_date})" if observed_date else "fecha desconocida"
         print(f"{r.name}: {value} {r.unit} | 1d {_fmt_change(r.change_1d, r.unit)} | 5d {_fmt_change(r.change_5d, r.unit)}")
-        print(f"  -> {r.direction} | score={r.score:+.1f} | source={r.source}")
+        print(f"  -> {r.direction} | score={r.score:+.1f} | {freshness} | source={r.source}")
 
     print("\nMARKET CONFLUENCE")
     print(f"Macro pressure (DXY/US10Y/Real Yield): {confluence.macro_pressure:+.1f}")
     print(f"XAUUSD confirmation: {confluence.xau_confirmation:+.1f}")
+    print(f"Macro data coverage: {confluence.available_macro_factors}/3")
+    if confluence.missing_macro_factors:
+        print(f"Missing macro factors: {', '.join(confluence.missing_macro_factors)}")
     print(f"Confluence score: {confluence.score:+.1f}")
     print(f"Conflict: {'YES' if confluence.conflict else 'NO'} | level={confluence.conflict_level}")
     print(f"Reading: {confluence.state}")
@@ -50,13 +56,25 @@ def print_v03_report(fed, bls, markets, confluence):
 
     print("\nUPCOMING BLS RELEASES")
     releases = bls.get("upcoming_releases", bls.get("calendar", []))
-    for item in releases[:6]:
-        if "date" in item:
-            label = f"{item['date']} {item.get('time', '')} ET".strip()
-        else:
-            start = item.get("start", "")
-            label = start.replace("T", " ")[:16]
-        print(f"- {label} — {item.get('title', item.get('summary', ''))}")
+    now = datetime.now(timezone.utc)
+    future = []
+    for item in releases:
+        raw = item.get("start") or item.get("date")
+        if not raw:
+            continue
+        try:
+            if "T" in raw:
+                dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            else:
+                dt = datetime.fromisoformat(raw).replace(tzinfo=timezone.utc)
+            if dt > now:
+                future.append((dt, item))
+        except ValueError:
+            continue
+    future.sort(key=lambda x: x[0])
+    for dt, item in future[:6]:
+        local_label = dt.strftime("%Y-%m-%d %H:%M UTC")
+        print(f"- {local_label} — {item.get('title', item.get('summary', ''))}")
 
     print("\nV0.3 STATUS: MARKET CONFLUENCE ACTIVE; MACRO NEWS SCORING STILL IN PROGRESS.")
 

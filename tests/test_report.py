@@ -40,3 +40,23 @@ def test_report_reads_bls_snapshot_contract(capsys):
     assert "cpi_all_items: 325.0 (August 2026)" in output
     assert "unemployment_rate: 4.2 (August 2026)" in output
     assert "Producer Price Index for August 2026" in output
+
+
+def test_report_filters_past_bls_releases(capsys):
+    now = datetime.now(timezone.utc)
+    reading = MarketReading(
+        "DXY", 98.0, 98.5, 99.0, -0.5, -1.0, "index", "test", now, 50.0, "BULLISH GOLD", "test"
+    )
+    fed = {"target_range": {"lower": 3.50, "upper": 3.75, "date": "2026-09-07"}}
+    bls = {
+        "observations": {},
+        "calendar": [
+            {"start": "2026-01-09T08:30:00-05:00", "title": "Old release"},
+            {"start": "2026-09-10T08:30:00-04:00", "title": "Producer Price Index for August 2026"},
+        ],
+    }
+    markets = {"dxy": reading, "us10y": reading, "real_yields": reading, "xauusd": reading}
+    print_v02_report(fed, bls, markets)
+    output = capsys.readouterr().out
+    assert "Old release" not in output
+    assert "Producer Price Index for August 2026" in output

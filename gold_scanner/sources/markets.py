@@ -243,25 +243,32 @@ def _treasury_month_history(kind: str, year: int, month: int) -> list[tuple[str,
 
 
 def _treasury_history(kind: str, limit: int = 8) -> list[tuple[str, float]]:
-    """Best-effort Treasury history using XML first, HTML second."""
-    now = datetime.now(timezone.utc)
+    """Return the most recent official observations available up to today.
+
+    Treasury publishes the daily real-yield curve later in the U.S. session.
+    If today's value is not published yet, the latest prior business day is
+    intentionally used (Friday on weekends/holidays). Future-dated rows are
+    ignored so the scanner never uses a value from the future.
+    """
+    today = datetime.now(timezone.utc).date()
     errors = []
     for loader in (_treasury_xml_month_history, _treasury_month_history):
         try:
-            rows = loader(kind, now.year, now.month)
-            if len(rows) < limit:
-                previous_month = now.replace(day=1) - timedelta(days=1)
+            rows: list[tuple[str, float]] = []
+            cursor = today.replace(day=1)
+            for _ in range(2):
                 try:
-                    rows = loader(kind, previous_month.year, previous_month.month) + rows
-                except Exception:
-                    pass
-            rows = sorted(set(rows), key=lambda x: x[0])
+                    rows.extend(loader(kind, cursor.year, cursor.month))
+                except Exception as exc:
+                    errors.append(exc)
+                previous_day = cursor - timedelta(days=1)
+                cursor = previous_day.replace(day=1)
+            rows = sorted({(d, v) for d, v in rows if d <= today.isoformat()}, key=lambda x: x[0])
             if rows:
                 return rows[-limit:]
         except Exception as exc:
             errors.append(exc)
     raise RuntimeError(f"Treasury unavailable for {kind}: {errors[-1] if errors else 'no data'}")
-
 
 def _unavailable_reading(name: str, unit: str, reason: str) -> MarketReading:
     return MarketReading(

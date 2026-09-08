@@ -32,3 +32,12 @@ pip install -r requirements.txt
 python -m pytest -q
 python -m gold_scanner.main
 ```
+
+
+## V0.3.2 — último dato disponible
+- Los factores de mercado usan siempre la observación más reciente disponible cuya fecha sea hoy o anterior.
+- Si el dato del día todavía no fue publicado, se utiliza automáticamente el último día hábil disponible.
+- Esto cubre fines de semana y feriados: por ejemplo, sábado/domingo utiliza el viernes.
+- El reporte identifica la frescura: `actual` o `dato anterior (YYYY-MM-DD)`.
+- Las observaciones futuras se ignoran.
+- Para Treasury se buscan el mes actual y el anterior; FRED sigue como fallback para Real Yield si Treasury no responde.

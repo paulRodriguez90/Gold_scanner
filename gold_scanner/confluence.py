@@ -13,6 +13,8 @@ class MarketConfluence:
     conflict: bool
     conflict_level: str
     explanation: str
+    available_macro_factors: int
+    missing_macro_factors: tuple[str, ...]
 
 
 def _clamp(value: float, low: float = -100.0, high: float = 100.0) -> float:
@@ -53,9 +55,10 @@ def calculate_market_confluence(readings: Mapping[str, object]) -> MarketConflue
         "us10y": (30.0, _reading_score(readings, "us10y")),
         "real_yields": (35.0, _reading_score(readings, "real_yields")),
     }
-    available = [(weight, score) for weight, score in macro_components.values() if score is not None]
+    available = [(name, weight, score) for name, (weight, score) in macro_components.items() if score is not None]
+    missing = tuple(name for name, (_, score) in macro_components.items() if score is None)
     if available:
-        macro_pressure = sum(weight * score for weight, score in available) / sum(weight for weight, _ in available)
+        macro_pressure = sum(weight * score for _, weight, score in available) / sum(weight for _, weight, _ in available)
     else:
         macro_pressure = 0.0
 
@@ -69,7 +72,7 @@ def calculate_market_confluence(readings: Mapping[str, object]) -> MarketConflue
     conflict_reasons: list[str] = []
 
     # Conflict inside the three macro drivers.
-    macro_scores = [score for _, score in available]
+    macro_scores = [score for _, _, score in available]
     if macro_scores and max(macro_scores) >= 25 and min(macro_scores) <= -25:
         direct_conflict = True
         conflict_reasons.append("los drivers macro están divididos")
@@ -82,6 +85,11 @@ def calculate_market_confluence(readings: Mapping[str, object]) -> MarketConflue
     # XAU confirmation has a smaller numerical role than macro pressure.
     # It can strengthen a confirmed move, but cannot erase a meaningful macro conflict.
     score = _clamp(0.80 * macro_pressure + 0.20 * xau_confirmation)
+
+    # A missing core macro driver reduces confidence. We still calculate the
+    # available pressure, but we never turn incomplete data into a strong
+    # actionable state.
+    incomplete = len(missing) > 0
 
     if abs(macro_pressure) < 15:
         state = "INDECISION"
@@ -97,6 +105,11 @@ def calculate_market_confluence(readings: Mapping[str, object]) -> MarketConflue
         state = "VENTA MODERADA" if xau_sign <= 0 else "BAJISTA — ESPERAR"
     else:
         state = "ALCISTA — ESPERAR" if macro_pressure > 0 else "BAJISTA — ESPERAR"
+
+    if incomplete and state in {"COMPRA FUERTE", "COMPRA MODERADA"}:
+        state = "ALCISTA — ESPERAR"
+    elif incomplete and state in {"VENTA FUERTE", "VENTA MODERADA"}:
+        state = "BAJISTA — ESPERAR"
 
     if direct_conflict:
         conflict_level = "ALTO" if len(conflict_reasons) > 1 else "MEDIO"
@@ -116,6 +129,10 @@ def calculate_market_confluence(readings: Mapping[str, object]) -> MarketConflue
     else:
         explanation = "Los drivers disponibles no muestran una dirección macro clara."
 
+    if incomplete:
+        missing_text = ", ".join(missing)
+        explanation += f" Datos incompletos: falta {missing_text}; por eso la lectura queda en modo espera."
+
     return MarketConfluence(
         macro_pressure=round(macro_pressure, 1),
         xau_confirmation=round(xau_confirmation, 1),
@@ -124,4 +141,6 @@ def calculate_market_confluence(readings: Mapping[str, object]) -> MarketConflue
         conflict=direct_conflict,
         conflict_level=conflict_level,
         explanation=explanation,
+        available_macro_factors=len(available),
+        missing_macro_factors=missing,
     )
