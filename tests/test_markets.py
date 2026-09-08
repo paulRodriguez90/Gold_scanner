@@ -147,3 +147,21 @@ def test_report_marks_previous_observation(capsys):
     print_v02_report(fed, bls, {"dxy": same, "us10y": same, "real_yields": reading, "xauusd": same})
     output = capsys.readouterr().out
     assert "dato anterior (2026-09-04)" in output
+
+
+def test_treasury_xml_real_yield_parses_current_new_date_and_uppercase_field(monkeypatch):
+    class Response:
+        content = b"""<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom" xmlns:d="http://schemas.microsoft.com/ado/2007/08/dataservices">
+          <entry>
+            <content type="application/xml">
+              <m:properties xmlns:m="http://schemas.microsoft.com/ado/2007/08/dataservices/metadata">
+                <d:NEW_DATE>2026-09-04T00:00:00</d:NEW_DATE>
+                <d:BC_10YEAR>2.43</d:BC_10YEAR>
+              </m:properties>
+            </content>
+          </entry>
+        </feed>"""
+    monkeypatch.setattr(markets, "_get", lambda *args, **kwargs: Response())
+    rows = markets._treasury_xml_month_history("real", 2026, 9)
+    assert rows == [("2026-09-04", 2.43)]

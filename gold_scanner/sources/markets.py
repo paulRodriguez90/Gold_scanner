@@ -148,15 +148,26 @@ def _treasury_xml_month_history(kind: str, year: int, month: int) -> list[tuple[
                     text = (child.text or "").strip()
                     if text and name not in fields:
                         fields[name] = text
-                date_text = fields.get("b:recorddate") or fields.get("recorddate") or fields.get("d:recorddate")
-                value_text = fields.get("b:bc_10year") or fields.get("bc_10year") or fields.get("d:bc_10year")
+                # Treasury's current XML model uses NEW_DATE and BC_10YEAR
+                # (uppercase in the XML, namespace-prefixed). Older feeds may
+                # expose RECORDDATE/BC_10YEAR. We normalize local tag names
+                # case-insensitively so both formats work.
+                normalized = {
+                    str(k).rsplit(":", 1)[-1].lower(): v
+                    for k, v in fields.items()
+                }
+                date_text = (
+                    normalized.get("new_date")
+                    or normalized.get("recorddate")
+                    or normalized.get("quote_date")
+                )
+                value_text = normalized.get("bc_10year")
                 if not date_text or not value_text:
-                    # Treasury XML commonly uses fields like bc_10year / bc_10year_1.
-                    for k, v in fields.items():
-                        lk = k.lower().replace("_", "")
-                        if date_text is None and "recorddate" in lk:
+                    for k, v in normalized.items():
+                        lk = k.replace("_", "")
+                        if date_text is None and ("recorddate" in lk or "newdate" in lk or "quotedate" in lk):
                             date_text = v
-                        if value_text is None and "10year" in lk and "30year" not in lk:
+                        if value_text is None and "bc10year" in lk:
                             value_text = v
                 if not date_text or not value_text or value_text.upper() == "N/A":
                     continue
