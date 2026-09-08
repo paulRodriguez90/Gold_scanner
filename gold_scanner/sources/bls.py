@@ -9,7 +9,9 @@ BLS_API_URL = "https://api.bls.gov/publicAPI/v1/timeseries/data/"
 # Official BLS series used by the scanner in V0.1.
 SERIES = {
     "cpi_all_items": "CUUR0000SA0",
+    "cpi_core": "CUUR0000SA0L1E",
     "ppi_final_demand": "WPSFD4",
+    "ppi_core": "WPSFD49104",
     "unemployment_rate": "LNS14000000",
     "nonfarm_payrolls": "CES0000000001",
 }
@@ -182,17 +184,44 @@ def fetch_latest_series(series_id: str, timeout: int = 20) -> dict:
     }
 
 
+
+def fetch_series_history(series_id: str, limit: int = 24, timeout: int = 20) -> list[dict]:
+    url = f"{BLS_API_URL}{series_id}"
+    r = requests.get(url, timeout=timeout, headers={"Accept": "application/json"})
+    r.raise_for_status()
+    payload = r.json()
+    if payload.get("status") != "REQUEST_SUCCEEDED":
+        raise RuntimeError(payload.get("message", ["Unknown BLS error"]))
+    data = payload["Results"]["series"][0].get("data", [])
+    rows=[]
+    for item in data[:limit]:
+        try:
+            rows.append({"date": f"{item['year']}-{item['period'][1:]}", "year": item["year"], "period": item["period"], "period_name": item.get("periodName"), "value": float(item["value"])})
+        except (KeyError, ValueError):
+            continue
+    return rows
+
+def fetch_macro_history(timeout: int = 20) -> dict:
+    out={}
+    for name, sid in SERIES.items():
+        try:
+            out[name]=fetch_series_history(sid, timeout=timeout)
+        except requests.RequestException:
+            out[name]=[]
+        except Exception:
+            out[name]=[]
+    return out
+
+
 def fetch_v01_snapshot() -> dict:
     """Return the V0.1 BLS snapshot: calendar + latest core observations."""
     calendar = fetch_release_calendar()
-    observations = {
-        name: fetch_latest_series(series_id)
-        for name, series_id in SERIES.items()
-    }
-
+    observations = {name: fetch_latest_series(series_id) for name, series_id in SERIES.items()}
+    history = fetch_macro_history()
     return {
         "source": "BLS",
         "retrieved_at": datetime.now(timezone.utc).isoformat(),
         "calendar": calendar,
         "observations": observations,
+        "history": history,
     }

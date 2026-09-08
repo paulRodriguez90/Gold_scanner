@@ -90,3 +90,23 @@ def test_fed_snapshot_target_range_contract(monkeypatch):
     assert snapshot["target_range"]["lower"] == 3.50
     assert snapshot["target_range"]["upper"] == 3.75
     assert snapshot["target_range"]["date"] == "2026-09-07"
+
+def test_bls_history_series_ids_and_parsing(monkeypatch):
+    from gold_scanner.sources import bls
+    assert bls.SERIES["cpi_core"] == "CUUR0000SA0L1E"
+    assert bls.SERIES["ppi_core"] == "WPSFD49104"
+
+
+def test_macro_scoring_weaker_employment_is_bullish():
+    from gold_scanner.macro_scoring import calculate_macro_impact
+    hist = lambda vals: [{"date": d, "value": v} for d,v in vals]
+    snap={
+        "cpi_core": hist([("2026-07", 333), ("2026-06", 334), ("2025-07", 330)]),
+        "ppi_core": hist([("2026-07", 156), ("2026-06", 157), ("2025-07", 155)]),
+        "nonfarm_payrolls": hist([("2026-08", 159075), ("2026-07", 159300)]),
+        "unemployment_rate": hist([("2026-08", 4.1), ("2026-07", 4.0)]),
+        "target_range": {"lower":3.5,"upper":3.75,"date":"2026-09-08"},
+        "target_history": [{"date":"2026-09-08","lower":3.5,"upper":3.75},{"date":"2026-07-29","lower":3.5,"upper":3.75}],
+    }
+    result=calculate_macro_impact(snap)
+    assert result.factors[1].score > 0

@@ -7,7 +7,7 @@ def _fmt_change(value, unit):
     return f"{value:+.3f}{' pp' if unit == '%' else '%'}"
 
 
-def print_v03_report(fed, bls, markets, confluence):
+def print_v03_report(fed, bls, markets, confluence, macro=None, combined_score=None):
     print("=== GOLD SCANNER V0.3.4 — MARKET CONFLUENCE ===")
     print(f"Retrieved: {datetime.now(timezone.utc).isoformat()}")
     print("\nMARKET DRIVERS")
@@ -30,6 +30,19 @@ def print_v03_report(fed, bls, markets, confluence):
     print(f"Conflict: {'YES' if confluence.conflict else 'NO'} | level={confluence.conflict_level}")
     print(f"Reading: {confluence.state}")
     print(f"Why: {confluence.explanation}")
+
+    if macro is not None:
+        print("\nMACRO FUNDAMENTAL IMPACT")
+        print(f"Macro score (CPI/PPI + Employment + Fed): {macro.score:+.1f}")
+        print(f"Macro reading: {macro.state}")
+        for factor in macro.factors:
+            date_text = factor.data_date or "n/a"
+            print(f"{factor.name}: {factor.score:+.1f} -> {factor.direction} | {factor.reason} | date={date_text}")
+        if macro.next_fomc:
+            print(f"Next FOMC: {macro.next_fomc}")
+        print(f"Macro explanation: {macro.explanation}")
+        if combined_score is not None:
+            print(f"Combined score (65% market / 35% macro): {combined_score:+.1f}")
 
     print("\nFED")
     target = fed.get("target_range", {})
@@ -76,7 +89,7 @@ def print_v03_report(fed, bls, markets, confluence):
         local_label = dt.strftime("%Y-%m-%d %H:%M UTC")
         print(f"- {local_label} — {item.get('title', item.get('summary', ''))}")
 
-    print("\nV0.3.4 STATUS: MARKET CONFLUENCE ACTIVE; REAL YIELD CASCADE ENABLED; MACRO NEWS SCORING STILL IN PROGRESS.")
+    print("\nV0.4 STATUS: MARKET CONFLUENCE + MACRO FUNDAMENTAL SCORING ACTIVE; CONSENSUS SURPRISES NOT YET CONNECTED.")
 
 # Backward-compatible entry point retained for existing tests/tools.
 def print_v02_report(fed, bls, markets):

@@ -91,10 +91,42 @@ def fetch_fomc_calendar(timeout: int = 20) -> list[dict]:
     return _extract_2026_meetings(r.text)
 
 
+def fetch_target_history(timeout: int = 20) -> list[dict]:
+    histories = {}
+    for name, url in (("upper", FRED_UPPER_CSV), ("lower", FRED_LOWER_CSV)):
+        r = requests.get(url, timeout=timeout); r.raise_for_status()
+        rows = list(csv.DictReader(io.StringIO(r.text)))
+        key = "DFEDTARU" if name == "upper" else "DFEDTARL"
+        histories[name] = [(x["observation_date"], float(x[key])) for x in rows if x.get(key)]
+    upper = dict(histories["upper"]); lower = dict(histories["lower"])
+    dates = sorted(set(upper) & set(lower), reverse=True)
+    return [{"date": d, "lower": lower[d], "upper": upper[d]} for d in dates[:8]]
+
+
 def fetch_v01_snapshot() -> dict:
+    target = fetch_target_range()
+    try:
+        target_history = fetch_target_history()
+    except requests.RequestException:
+        target_history = []
+    except Exception:
+        target_history = []
+    meetings = fetch_fomc_calendar()
+    today = datetime.now(timezone.utc).date()
+    next_fomc = None
+    month_map = {m:i for i,m in enumerate(["January","February","March","April","May","June","July","August","September","October","November","December"],1)}
+    future = []
+    for m in meetings:
+        d = datetime(2026, month_map[m["month"]], m["start_day"], tzinfo=timezone.utc).date()
+        if d >= today:
+            future.append(d)
+    if future:
+        next_fomc = min(future).isoformat()
     return {
         "source": "Federal Reserve / FRED",
         "retrieved_at": datetime.now(timezone.utc).isoformat(),
-        "target_range": fetch_target_range(),
-        "fomc_2026": fetch_fomc_calendar(),
+        "target_range": target,
+        "target_history": target_history,
+        "fomc_2026": meetings,
+        "next_fomc": next_fomc,
     }
