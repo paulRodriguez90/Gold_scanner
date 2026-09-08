@@ -130,3 +130,49 @@ def calculate_macro_impact(snapshot: dict) -> MacroImpact:
     explanation="; ".join(f"{f.name} {f.score:+.1f}" for f in factors)
     if missing: explanation += ". Datos faltantes: " + ", ".join(missing)
     return MacroImpact(round(score,1),state,tuple(factors),explanation,tuple(missing),snapshot.get("next_fomc"))
+
+
+def _latest_event(events, key: str):
+    rows = [e for e in (events or []) if getattr(e, "key", None) == key and getattr(e, "released", False)]
+    return max(rows, key=lambda e: e.date) if rows else None
+
+
+def _surprise_score(actual, consensus, scale, positive_bullish=True):
+    if actual is None or consensus is None:
+        return None
+    surprise = actual - consensus
+    raw = clamp(surprise / scale) * 100.0
+    return raw if positive_bullish else -raw
+
+
+def calculate_surprise_impact(snapshot: dict, events=None) -> dict:
+    """Calculate market impact from actual-vs-consensus surprises.
+
+    No consensus means no surprise score. This is intentional: the scanner
+    never invents a forecast.
+    """
+    events = events or []
+    rows = []
+    specs = [
+        ("cpi", "CPI", 0.20, False),
+        ("core_cpi", "Core CPI", 0.15, False),
+        ("ppi", "PPI", 0.30, False),
+        ("nfp", "NFP", 150_000.0, False),
+        ("unemployment", "Unemployment", 0.15, True),
+    ]
+    for key, label, scale, positive_bullish in specs:
+        e = _latest_event(events, key)
+        if not e or e.actual is None or e.consensus is None:
+            continue
+        score = _surprise_score(e.actual, e.consensus, scale, positive_bullish)
+        rows.append({"key": key, "label": label, "actual": e.actual, "consensus": e.consensus, "previous": e.previous, "surprise": e.actual - e.consensus, "score": round(score,1), "date": e.date, "source": e.source})
+    if not rows:
+        return {"score": 0.0, "state": "SIN CONSENSO", "events": [], "explanation": "No hay consenso disponible para calcular sorpresas."}
+    weights = {"cpi": .25, "core_cpi": .25, "ppi": .15, "nfp": .20, "unemployment": .15}
+    total_w = sum(weights[r["key"]] for r in rows)
+    score = clamp(sum(r["score"] * weights[r["key"]] for r in rows) / total_w)
+    if score >= 30: state = "FAVORABLE AL ORO"
+    elif score <= -30: state = "DESFAVORABLE AL ORO"
+    else: state = "MIXTO / LEVE"
+    explanation = "; ".join(f'{r["label"]} {r["score"]:+.1f}' for r in rows)
+    return {"score": round(score,1), "state": state, "events": rows, "explanation": explanation}

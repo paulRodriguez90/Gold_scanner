@@ -1,47 +1,38 @@
-# Gold Scanner
+# Gold Scanner V0.5
 
-## V0.3 — Market Confluence
+Scanner macro/market para XAUUSD. No ejecuta operaciones.
 
-V0.3 turns the four connected market drivers into a **confluence layer** instead of simply adding their scores.
+## V0.5
 
-### Logic
+Agrega **Actual vs Consensus** para CPI, Core CPI, PPI, NFP y desempleo.
 
-- **DXY, US10Y and 10Y real yield** form the macro-pressure block.
-- **XAUUSD** is treated separately as price confirmation.
-- If macro pressure and XAUUSD disagree, the scanner does **not** issue a clean buy/sell state; it moves to `ALCISTA — ESPERAR` or `BAJISTA — ESPERAR` and marks the conflict.
-- If macro drivers themselves strongly disagree, the scanner also marks a conflict.
-- Unavailable sources are ignored in the macro-pressure average rather than being converted into an artificial signal.
+- Trading Economics es la fuente preferida para consenso y actual.
+- Si existe `TRADING_ECONOMICS_API_KEY`, se usa la API.
+- Sin API key, se intenta la página pública del indicador como fallback.
+- Si no hay consenso, el scanner **no inventa** un forecast y no calcula surprise para ese evento.
+- Surprise score:
+  - CPI/Core CPI/PPI por debajo del consenso: favorable al oro.
+  - NFP por debajo del consenso: favorable al oro.
+  - Desempleo por encima del consenso: favorable al oro.
+- El score combinado pasa a ser:
+  - 55% Market Confluence
+  - 25% Macro Fundamental
+  - 20% Consensus Surprise
 
-### Output
+## Fuentes
 
-The report now shows:
+- BLS: CPI, Core CPI, PPI, Core PPI, NFP, desempleo.
+- Federal Reserve: rango objetivo y calendario FOMC.
+- Yahoo / Treasury / FRED / Trading Economics / XAUS: mercado.
+- Trading Economics: consenso económico y actualizaciones de calendario.
 
-- Macro pressure: -100 to +100
-- XAUUSD confirmation: -100 to +100
-- Confluence score: -100 to +100
-- Conflict and conflict level
-- Final market reading
-- Human-readable explanation of why the scanner is waiting or confirming
-
-This is still **not a complete trading signal**. Fed, inflation, employment, China/PBoC, geopolitics, news surprise and reaction analysis remain separate layers to be integrated.
-
-## Run locally
+## Ejecución
 
 ```bash
-pip install -r requirements.txt
 python -m pytest -q
 python -m gold_scanner.main
 ```
 
+## Nota
 
-## V0.3.4 — último dato disponible
-- Los factores de mercado usan siempre la observación más reciente disponible cuya fecha sea hoy o anterior.
-- Si el dato del día todavía no fue publicado, se utiliza automáticamente el último día hábil disponible.
-- Esto cubre fines de semana y feriados: por ejemplo, sábado/domingo utiliza el viernes.
-- El reporte identifica la frescura: `actual` o `dato anterior (YYYY-MM-DD)`.
-- Las observaciones futuras se ignoran.
-- Para Treasury se buscan el mes actual y el anterior; FRED sigue como fallback para Real Yield si Treasury no responde.
-
-
-## V0.3.4
-Real Yield source cascade: Trading Economics current quote -> U.S. Treasury -> FRED DFII10 -> unavailable. When Trading Economics supplies the current intraday value, prior Treasury/FRED history is retained for 1d/5d changes.
+La reacción posterior al dato intradía queda preparada como siguiente capa. V0.5 no usa una reacción inventada ni sustituye consenso faltante por estimaciones propias.

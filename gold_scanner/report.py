@@ -7,7 +7,7 @@ def _fmt_change(value, unit):
     return f"{value:+.3f}{' pp' if unit == '%' else '%'}"
 
 
-def print_v03_report(fed, bls, markets, confluence, macro=None, combined_score=None):
+def print_v03_report(fed, bls, markets, confluence, macro=None, combined_score=None, surprise=None):
     print("=== GOLD SCANNER V0.3.4 — MARKET CONFLUENCE ===")
     print(f"Retrieved: {datetime.now(timezone.utc).isoformat()}")
     print("\nMARKET DRIVERS")
@@ -41,8 +41,15 @@ def print_v03_report(fed, bls, markets, confluence, macro=None, combined_score=N
         if macro.next_fomc:
             print(f"Next FOMC: {macro.next_fomc}")
         print(f"Macro explanation: {macro.explanation}")
+        if surprise is not None:
+            print("\nCONSENSUS SURPRISE IMPACT")
+            print(f"Surprise score: {surprise["score"]:+.1f}")
+            print(f"Surprise reading: {surprise["state"]}")
+            for row in surprise.get("events", []):
+                print(f"{row["label"]}: actual={row["actual"]} | consensus={row["consensus"]} | surprise={row["surprise"]:+.4g} | score={row["score"]:+.1f} | date={row["date"]}")
+            print(f"Surprise explanation: {surprise["explanation"]}")
         if combined_score is not None:
-            print(f"Combined score (65% market / 35% macro): {combined_score:+.1f}")
+            print(f"Combined score (55% market / 25% macro / 20% surprise): {combined_score:+.1f}")
 
     print("\nFED")
     target = fed.get("target_range", {})
@@ -89,7 +96,7 @@ def print_v03_report(fed, bls, markets, confluence, macro=None, combined_score=N
         local_label = dt.strftime("%Y-%m-%d %H:%M UTC")
         print(f"- {local_label} — {item.get('title', item.get('summary', ''))}")
 
-    print("\nV0.4 STATUS: MARKET CONFLUENCE + MACRO FUNDAMENTAL SCORING ACTIVE; CONSENSUS SURPRISES NOT YET CONNECTED.")
+    print("\nV0.5 STATUS: MARKET CONFLUENCE + MACRO FUNDAMENTAL + CONSENSUS SURPRISE SCORING ACTIVE.")
 
 # Backward-compatible entry point retained for existing tests/tools.
 def print_v02_report(fed, bls, markets):

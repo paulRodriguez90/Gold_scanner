@@ -110,3 +110,24 @@ def test_macro_scoring_weaker_employment_is_bullish():
     }
     result=calculate_macro_impact(snap)
     assert result.factors[1].score > 0
+
+
+def test_surprise_scoring_uses_consensus_without_guessing():
+    from gold_scanner.macro_scoring import calculate_surprise_impact
+    from gold_scanner.sources.calendar import EconomicEvent
+    events = [
+        EconomicEvent("cpi", "2026-08-12", 2.40, 2.50, 2.60, "%", "test", 3, True),
+        EconomicEvent("nfp", "2026-09-04", 162000, 159000, 150000, "persons", "test", 3, True),
+    ]
+    result = calculate_surprise_impact({}, events)
+    assert result["events"]
+    assert result["score"] > 0
+
+
+def test_surprise_scoring_skips_missing_consensus():
+    from gold_scanner.macro_scoring import calculate_surprise_impact
+    from gold_scanner.sources.calendar import EconomicEvent
+    events = [EconomicEvent("cpi", "2026-08-12", 2.40, 2.50, None, "%", "test", 3, True)]
+    result = calculate_surprise_impact({}, events)
+    assert result["events"] == []
+    assert result["score"] == 0.0
