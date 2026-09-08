@@ -12,7 +12,7 @@ import requests
 
 FRED_CSV = "https://fred.stlouisfed.org/graph/fredgraph.csv?id={series}"
 YAHOO_CHART = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
-STOOQ_QUOTE = "https://stooq.com/q/l/?s={symbol}&f=sd2t2ohlcv&h&e=csv"
+XAUS_HISTORY = "https://xaus.com/api/v1/history"
 TREASURY_TEXT = "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/TextView"
 
 HEADERS = {"User-Agent": "GoldScanner/0.2 (+https://github.com/)"}
@@ -219,15 +219,30 @@ def _yahoo_history(symbol: str, range_: str = "10d") -> list[tuple[str, float]]:
     return rows
 
 
-def _stooq_quote(symbol: str) -> float:
-    r = _get(STOOQ_QUOTE.format(symbol=symbol))
-    rows = list(csv.DictReader(io.StringIO(r.text)))
-    if not rows:
-        raise RuntimeError(f"Stooq returned no quote for {symbol}")
-    close = rows[0].get("Close")
-    if close in (None, "", "N/D"):
-        raise RuntimeError(f"Stooq returned no close for {symbol}")
-    return float(close)
+def _xaus_history(limit: int = 10) -> list[tuple[str, float]]:
+    """Fetch daily XAU/USD spot history from XAUS.
+
+    XAUS exposes keyless daily XAU/USD history as JSON. Each point contains
+    the date (d) and close (c). We keep only valid observations and use the
+    latest points for the 1d/5d market-driver calculations.
+    """
+    r = _get(XAUS_HISTORY)
+    payload = r.json()
+    points = payload.get("points", [])
+    rows: list[tuple[str, float]] = []
+    for point in points:
+        date_text = point.get("d")
+        close = point.get("c")
+        if not date_text or close in (None, ""):
+            continue
+        try:
+            rows.append((str(date_text), float(close)))
+        except (TypeError, ValueError):
+            continue
+    rows.sort(key=lambda x: x[0])
+    if len(rows) < 2:
+        raise RuntimeError("XAUS returned fewer than 2 usable XAU/USD observations")
+    return rows[-limit:]
 
 
 def _make_reading(name: str, rows: list[tuple[str, float]], unit: str, source: str,
@@ -265,13 +280,16 @@ def fetch_market_snapshot() -> dict[str, MarketReading]:
     out["real_yields"] = _make_reading("10Y Real Yield", real_rows, "%", "U.S. Treasury", False, 0.04, 0.08)
 
     try:
-        xau_rows = _yahoo_history("XAUUSD=X")
-        xau_source = "Yahoo Finance"
+        xau_rows = _xaus_history()
+        xau_source = "XAUS XAU/USD spot history"
+        xau_name = "XAUUSD"
     except Exception:
-        xau_close = _stooq_quote("xauusd")
-        today = datetime.now(timezone.utc).date().isoformat()
-        xau_rows = [(today, xau_close)]
-        xau_source = "Stooq"
-    out["xauusd"] = _make_reading("XAUUSD", xau_rows, "price", xau_source, True, 0.60, 1.50)
+        # Yahoo's XAUUSD=X chart symbol is not consistently available to
+        # GitHub-hosted runners. GC=F is a transparent market proxy for gold
+        # futures and is used only as a fallback, never mislabeled as spot.
+        xau_rows = _yahoo_history("GC=F")
+        xau_source = "Yahoo Finance / COMEX Gold futures (proxy)"
+        xau_name = "XAUUSD (GC=F proxy)"
+    out["xauusd"] = _make_reading(xau_name, xau_rows, "price", xau_source, True, 0.60, 1.50)
 
     return out

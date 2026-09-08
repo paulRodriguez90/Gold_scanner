@@ -41,3 +41,30 @@ def test_treasury_month_history_parses_mock(monkeypatch):
     monkeypatch.setattr(markets, "_get", lambda *args, **kwargs: Response())
     rows = markets._treasury_month_history("real", 2026, 9)
     assert rows[-1] == ("2026-09-04", 2.42)
+
+
+def test_xaus_history_parses_json(monkeypatch):
+    class Response:
+        def json(self):
+            return {"points": [
+                {"d": "2026-09-01", "c": 3400.0},
+                {"d": "2026-09-02", "c": 3410.0},
+                {"d": "2026-09-03", "c": 3420.0},
+            ]}
+
+    monkeypatch.setattr(markets, "_get", lambda *args, **kwargs: Response())
+    rows = markets._xaus_history()
+    assert rows[-1] == ("2026-09-03", 3420.0)
+
+
+def test_xaus_history_rejects_insufficient_data(monkeypatch):
+    class Response:
+        def json(self):
+            return {"points": [{"d": "2026-09-03", "c": 3420.0}]}
+
+    monkeypatch.setattr(markets, "_get", lambda *args, **kwargs: Response())
+    try:
+        markets._xaus_history()
+        assert False, "Expected RuntimeError"
+    except RuntimeError as exc:
+        assert "fewer than 2" in str(exc)
