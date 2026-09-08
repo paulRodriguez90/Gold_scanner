@@ -117,6 +117,7 @@ def test_market_snapshot_does_not_abort_when_real_yield_sources_fail(monkeypatch
         return [("2026-09-08", 4.78), ("2026-09-07", 4.77)]
     monkeypatch.setattr(markets, "_treasury_history", fail_real)
     monkeypatch.setattr(markets, "_fred_history", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("fred unavailable")))
+    monkeypatch.setattr(markets, "_trading_economics_real_yield_current", lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("trading economics unavailable")))
     monkeypatch.setattr(markets, "_yahoo_history", lambda symbol, *args, **kwargs: [("2026-09-07", 98.9), ("2026-09-08", 98.8)] if symbol == "DX-Y.NYB" else [("2026-09-07", 4440), ("2026-09-08", 4450)])
     monkeypatch.setattr(markets, "_xaus_history", lambda: [("2026-09-07", 4440), ("2026-09-08", 4450)])
     snapshot = markets.fetch_market_snapshot()
