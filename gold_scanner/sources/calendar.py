@@ -188,6 +188,13 @@ def _parse_public_calendar_rows(html: str, key: str, source: str) -> list[Econom
         actual = _num(cells[2])
         if previous is None and consensus is None and actual is None:
             continue
+        # Some public calendar pages expose a current/summary value in the
+        # same row as a future release. Never allow an event dated in the
+        # future to become a released Actual. Future events are consensus-only
+        # until their release date arrives.
+        today = datetime.now(timezone.utc).date().isoformat()
+        if date > today:
+            actual = None
         out.append(EconomicEvent(key, date, actual, previous, consensus, source=source, released=actual is not None, release_time=release_time, metric=""))
     return out
 

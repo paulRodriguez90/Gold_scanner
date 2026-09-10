@@ -2,7 +2,7 @@
 
 Scanner macro/market para XAUUSD. No ejecuta operaciones.
 
-## V0.6.1
+## V0.6.2
 
 Mejora la capa de **Actual vs Consensus**:
 - Trading Economics API si existe `TRADING_ECONOMICS_API_KEY`.
@@ -34,7 +34,7 @@ python -m gold_scanner.main
 La reacción posterior al dato intradía sigue reservada para una capa posterior; no se inventa con variaciones diarias.
 
 
-## V0.6.1
+## V0.6.2
 - Normaliza CPI/Core CPI/PPI/Core PPI en métricas MoM y YoY cuando la fuente las distingue.
 - Mantiene Actual, Consensus y Previous asociados a la misma métrica y fecha.
 - Evita tratar CPI MoM y CPI YoY como duplicados.
@@ -51,9 +51,16 @@ La reacción posterior al dato intradía sigue reservada para una capa posterior
 - PPI/CPI futuros continúan mostrando Previous + Consensus mientras el último dato publicado sigue siendo el vigente.
 
 
-## V0.6.1
+## V0.6.2
 - Persistent macro context across GitHub Actions runs.
 - BLS CPI/Core CPI/PPI/Core PPI/NFP/Unemployment fetched in one batch request.
 - If BLS is temporarily unavailable or quota-limited, the scanner continues using persisted macro context.
 - State file is guaranteed to exist before cache save.
 - GitHub Actions schedule: every 30 minutes.
+
+
+## V0.6.2 fixes
+- Future-dated calendar rows can never become released Actual values.
+- Persisted future-dated surprises are removed/ignored.
+- CPI/Core CPI index-level surprises use a relative scale to avoid inflated scores such as +465.
+- GitHub Actions runs every 30 minutes.

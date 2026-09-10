@@ -30,7 +30,7 @@ def test_report_reads_bls_snapshot_contract(capsys):
             "unemployment_rate": {"value": 4.2, "period_name": "August", "year": "2026"},
         },
         "calendar": [
-            {"start": "2026-09-10T08:30:00-04:00", "title": "Producer Price Index for August 2026"}
+            {"start": "2026-09-11T08:30:00-04:00", "title": "Producer Price Index for August 2026"}
         ],
     }
     markets = {"dxy": reading, "us10y": reading, "real_yields": reading, "xauusd": reading}
@@ -52,7 +52,7 @@ def test_report_filters_past_bls_releases(capsys):
         "observations": {},
         "calendar": [
             {"start": "2026-01-09T08:30:00-05:00", "title": "Old release"},
-            {"start": "2026-09-10T08:30:00-04:00", "title": "Producer Price Index for August 2026"},
+            {"start": "2026-09-11T08:30:00-04:00", "title": "Producer Price Index for August 2026"},
         ],
     }
     markets = {"dxy": reading, "us10y": reading, "real_yields": reading, "xauusd": reading}

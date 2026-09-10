@@ -89,8 +89,16 @@ def update_released_surprises(state: dict[str, Any], surprise_result: dict[str, 
     combined score.
     """
     surprises = state.setdefault('surprises', {})
+    today = datetime.now(timezone.utc).date().isoformat()
+    # Remove any future-dated surprise that may have been stored by an older
+    # buggy run. It can never be an active surprise before its release date.
+    for ident, stored in list(surprises.items()):
+        if isinstance(stored, dict) and stored.get('date') and stored.get('date') > today:
+            del surprises[ident]
     for row in surprise_result.get('events', []) or []:
         if row.get('actual') is None or row.get('consensus') is None:
+            continue
+        if row.get('date') and row.get('date') > today:
             continue
         ident = _identity(row)
         # A new release for the same indicator/metric supersedes the older
@@ -109,7 +117,11 @@ def update_released_surprises(state: dict[str, Any], surprise_result: dict[str, 
 
 
 def active_surprises(state: dict[str, Any]) -> list[dict[str, Any]]:
-    rows = list((state.get('surprises') or {}).values())
+    today = datetime.now(timezone.utc).date().isoformat()
+    rows = [
+        r for r in (state.get('surprises') or {}).values()
+        if isinstance(r, dict) and (not r.get('date') or r.get('date') <= today)
+    ]
     rows.sort(key=lambda r: (r.get('date') or '', r.get('release_time') or ''), reverse=True)
     return rows
 

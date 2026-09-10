@@ -1,6 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
+from datetime import datetime, timezone
 
 
 def clamp(x: float, lo=-100.0, hi=100.0) -> float:
@@ -160,6 +161,24 @@ def _surprise_score(actual, consensus, scale, positive_bullish=True):
     return raw if positive_bullish else -raw
 
 
+def _event_surprise_score(event, scale, positive_bullish):
+    """Score a released event without letting index-level CPI values explode.
+
+    Some public calendars expose CPI as an index level (for example 333.92 vs
+    334.85) while others expose the inflation rate. The generic CPI scale is
+    appropriate for percentage releases but is far too small for index levels
+    and can produce nonsense such as +465. For index-level values, use a
+    0.5%% relative surprise scale, then keep the final score bounded to [-100,+100].
+    """
+    if event.actual is None or event.consensus is None:
+        return None
+    if event.key in {"cpi", "core_cpi"} and (event.metric or "value") == "value" and event.consensus != 0:
+        relative_surprise = (event.actual - event.consensus) / abs(event.consensus)
+        raw = clamp(relative_surprise / 0.005) * 100.0
+        return raw if positive_bullish else -raw
+    return _surprise_score(event.actual, event.consensus, scale, positive_bullish)
+
+
 SURPRISE_WEIGHTS = {"cpi": .20, "core_cpi": .20, "ppi": .15, "core_ppi": .10, "nfp": .20, "unemployment": .15}
 
 
@@ -191,20 +210,25 @@ def calculate_surprise_impact(snapshot: dict, events=None, state=None) -> dict:
     upcoming_rows = []
     missing_consensus = []
 
+    today = datetime.now(timezone.utc).date().isoformat()
     for e in events:
         if e.key not in labels:
             continue
         label = labels[e.key]
+        # Calendar providers can expose summary/last-known values alongside
+        # a future event. A future-dated event is never a released Actual,
+        # regardless of what the provider placed in its Actual field.
+        is_future = bool(e.date and e.date > today)
         scale, positive_bullish = scales[e.key]
         metric_label = f"{label} {e.metric.upper()}" if e.metric and e.metric != "value" else label
-        if e.actual is None:
+        if is_future or e.actual is None:
             if e.consensus is not None:
                 upcoming_rows.append({"key": e.key, "metric": e.metric, "label": metric_label, "consensus": e.consensus, "previous": e.previous, "date": e.date, "source": e.source, "release_time": e.release_time})
             continue
         if e.consensus is None:
             missing_consensus.append(label)
             continue
-        score = _surprise_score(e.actual, e.consensus, scale, positive_bullish)
+        score = _event_surprise_score(e, scale, positive_bullish)
         released_rows.append({
             "key": e.key, "metric": e.metric, "label": metric_label, "actual": e.actual,
             "consensus": e.consensus, "previous": e.previous,

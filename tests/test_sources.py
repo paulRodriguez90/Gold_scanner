@@ -238,3 +238,35 @@ def test_forexfactory_parser_normalizes_mom_and_yoy_separately():
     cpi_yoy = next(r for r in rows if r.key == "cpi" and r.metric == "yoy")
     assert (cpi_mom.actual, cpi_mom.consensus, cpi_mom.previous) == (0.4, 0.3, 0.2)
     assert (cpi_yoy.actual, cpi_yoy.consensus, cpi_yoy.previous) == (3.4, 3.3, 3.2)
+
+
+def test_public_calendar_future_actual_is_not_treated_as_released():
+    from gold_scanner.sources.calendar import _parse_public_calendar_rows
+    html = """
+    <table><tr><th>Date</th><th>Previous</th><th>Consensus</th><th>Actual</th></tr>
+    <tr><td>Sep 11, 2026 12:30</td><td>333.95</td><td>334.85</td><td>333.92</td></tr>
+    </table>
+    """
+    rows = _parse_public_calendar_rows(html, "cpi", "Investing.com")
+    assert len(rows) == 1
+    assert rows[0].actual is None
+    assert rows[0].consensus == 334.85
+    assert rows[0].previous == 333.95
+    assert rows[0].released is False
+
+
+def test_future_event_with_populated_actual_is_upcoming_not_released():
+    from gold_scanner.macro_scoring import calculate_surprise_impact
+    from gold_scanner.sources.calendar import EconomicEvent
+    events = [EconomicEvent("cpi", "2999-09-11", 333.92, 333.95, 334.85, source="Investing.com", released=True)]
+    result = calculate_surprise_impact({}, events, {"surprises": {}})
+    assert result["events"] == []
+    assert result["upcoming"][0]["consensus"] == 334.85
+
+
+def test_cpi_index_surprise_is_bounded_reasonably():
+    from gold_scanner.macro_scoring import calculate_surprise_impact
+    from gold_scanner.sources.calendar import EconomicEvent
+    events = [EconomicEvent("cpi", "2026-09-09", 333.92, 333.95, 334.85, source="Investing.com", released=True)]
+    result = calculate_surprise_impact({}, events, {"surprises": {}})
+    assert result["events"][0]["score"] == 55.5
