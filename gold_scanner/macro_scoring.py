@@ -174,7 +174,7 @@ def _event_surprise_score(event, scale, positive_bullish):
         return None
     if event.key in {"cpi", "core_cpi"} and (event.metric or "value") == "value" and event.consensus != 0:
         relative_surprise = (event.actual - event.consensus) / abs(event.consensus)
-        raw = clamp(relative_surprise / 0.005) * 100.0
+        raw = clamp((relative_surprise / 0.005) * 100.0)
         return raw if positive_bullish else -raw
     return _surprise_score(event.actual, event.consensus, scale, positive_bullish)
 
@@ -239,15 +239,18 @@ def calculate_surprise_impact(snapshot: dict, events=None, state=None) -> dict:
     # State is the source of truth for the currently active surprise. If the
     # current calendar contains a newer released event, it supersedes the old
     # stored event for that same metric after main() updates the state.
-    active = []
+    # Merge persisted surprises with freshly fetched releases. Fresh data wins
+    # for the same key/metric/date, which also migrates stale scores produced by
+    # older scanner versions.
+    active_by_release = {}
     for row in (state.get('surprises') or {}).values():
         if row.get('actual') is not None and row.get('consensus') is not None:
-            active.append(dict(row))
+            ident = (row.get('key'), row.get('metric') or 'value', row.get('date') or '')
+            active_by_release[ident] = dict(row)
     for row in released_rows:
-        ident = f"{row.get('key') or ''}|{row.get('metric') or ''}|{row.get('date') or ''}"
-        # Avoid duplicate display when a newly retrieved event is already in state.
-        if not any(f"{a.get('key') or ''}|{a.get('metric') or ''}|{a.get('date') or ''}" == ident for a in active):
-            active.append(row)
+        ident = (row.get('key'), row.get('metric') or 'value', row.get('date') or '')
+        active_by_release[ident] = row
+    active = list(active_by_release.values())
 
     # Only the latest release per indicator/metric contributes to the active
     # score. This means a monthly indicator does not accumulate old surprises.
@@ -260,6 +263,20 @@ def calculate_surprise_impact(snapshot: dict, events=None, state=None) -> dict:
     rows = list(latest.values())
     rows.sort(key=lambda r: (r.get('date') or '', r.get('key') or '', r.get('metric') or ''))
     upcoming_rows.sort(key=lambda r: (r["date"], r["key"], r.get("metric") or ""))
+
+    # Public calendars often return duplicate representations of the same
+    # indicator: one row with Actual/Consensus and another summary row with
+    # Actual but no consensus. Do not report "sin consenso verificable" when
+    # a valid consensus already exists for the active release/key.
+    active_keys_with_consensus = {
+        (r.get('key'), r.get('metric') or 'value')
+        for r in rows
+        if r.get('consensus') is not None
+    }
+    missing_consensus = [
+        label for label in sorted(set(missing_consensus))
+        if not any(labels.get(k) == label for k, _metric in active_keys_with_consensus)
+    ]
 
     if not rows:
         msg = "No hay una sorpresa publicada vigente con consenso. Los datos macro publicados siguen formando parte del Macro Fundamental."

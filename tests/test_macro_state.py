@@ -32,3 +32,24 @@ def test_future_surprise_is_removed_from_state():
     state = {'surprises': {'cpi|mom|2999-01-01': {'key':'cpi','metric':'mom','date':'2999-01-01','score':100.0}}}
     state = update_released_surprises(state, {'events': []})
     assert active_surprise_score(state, {'cpi': 1.0}) == 0.0
+
+
+def test_calculate_surprise_refreshes_stale_persisted_score():
+    from types import SimpleNamespace
+    from gold_scanner.macro_scoring import calculate_surprise_impact
+    state = {
+        'surprises': {
+            'core_cpi|value|2026-08-12': {
+                'key': 'core_cpi', 'metric': 'value', 'date': '2026-08-12',
+                'actual': 2.6, 'consensus': 2.5, 'score': -800.0,
+                'label': 'Core CPI'
+            }
+        }
+    }
+    event = SimpleNamespace(
+        key='core_cpi', metric='value', date='2026-08-12', actual=2.6,
+        consensus=2.5, previous=2.5, released=True, source='test', release_time=None
+    )
+    result = calculate_surprise_impact({}, [event], state)
+    row = next(r for r in result['events'] if r['key'] == 'core_cpi')
+    assert row['score'] == -100.0
