@@ -119,15 +119,29 @@ def calculate_macro_impact(snapshot: dict) -> MacroImpact:
             missing.append(name)
     weights={"inflation":0.40,"employment":0.30,"fed":0.30}
     score=clamp(sum(f.score*weights[f.name] for f in factors))
+
     if score>=60: state="COMPRA FUERTE"
     elif score>=30: state="COMPRA MODERADA"
-    elif score>=10: state="ALCISTA — ESPERAR"
+    elif score>=10: state="ALCISTA"
     elif score>-10: state="INDECISION"
-    elif score>-30: state="BAJISTA — ESPERAR"
+    elif score>-30: state="BAJISTA"
     elif score>-60: state="VENTA MODERADA"
     else: state="VENTA FUERTE"
-    if missing and state in {"COMPRA FUERTE","COMPRA MODERADA"}: state="ALCISTA — ESPERAR"
-    if missing and state in {"VENTA FUERTE","VENTA MODERADA"}: state="BAJISTA — ESPERAR"
+
+    directional = 1 if score > 0 else -1 if score < 0 else 0
+    if directional and missing:
+        state = f"{'ALCISTA' if directional > 0 else 'BAJISTA'} — ESPERAR CONFIRMACIÓN MACRO ({', '.join(missing)})"
+    elif directional and 10 <= abs(score) < 30:
+        # At this layer there is no price input, so the missing confirmation
+        # is necessarily fundamental rather than price-based.
+        state = f"{'ALCISTA' if directional > 0 else 'BAJISTA'} — ESPERAR CONFIRMACIÓN MACRO"
+    elif directional and 30 <= abs(score) < 60:
+        # Moderate fundamental pressure without enough strength for a strong
+        # state is better described as moderate, not as an unexplained wait.
+        state = "COMPRA MODERADA" if directional > 0 else "VENTA MODERADA"
+
+    if missing and state in {"COMPRA FUERTE","COMPRA MODERADA"}:
+        state=f"{'ALCISTA' if directional > 0 else 'BAJISTA'} — ESPERAR CONFIRMACIÓN MACRO ({', '.join(missing)})"
     explanation="; ".join(f"{f.name} {f.score:+.1f}" for f in factors)
     if missing: explanation += ". Datos faltantes: " + ", ".join(missing)
     return MacroImpact(round(score,1),state,tuple(factors),explanation,tuple(missing),snapshot.get("next_fomc"))

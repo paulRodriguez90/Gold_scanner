@@ -27,7 +27,7 @@ def test_bullish_macro_with_bearish_gold_waits():
         "xauusd": r(-60),
     })
     assert result.conflict is True
-    assert result.state == "ALCISTA — ESPERAR"
+    assert result.state == "ALCISTA — ESPERAR RESOLUCIÓN DEL CONFLICTO"
     assert "XAUUSD" in result.explanation
 
 
@@ -40,7 +40,7 @@ def test_macro_drivers_in_conflict_do_not_become_clean_signal():
     })
     assert result.conflict is True
     assert result.conflict_level == "MEDIO"
-    assert result.state in {"ALCISTA — ESPERAR", "BAJISTA — ESPERAR"}
+    assert result.state in {"ALCISTA — ESPERAR RESOLUCIÓN DEL CONFLICTO", "BAJISTA — ESPERAR RESOLUCIÓN DEL CONFLICTO"}
 
 
 def test_unavailable_real_yield_is_ignored_without_crash():
@@ -74,5 +74,34 @@ def test_missing_core_macro_factor_caps_actionable_state():
     })
     assert result.available_macro_factors == 2
     assert result.missing_macro_factors == ("real_yields",)
-    assert result.state == "ALCISTA — ESPERAR"
+    assert result.state == "ALCISTA — ESPERAR CONFIRMACIÓN MACRO (real_yields)"
     assert "Datos incompletos" in result.explanation
+
+def test_bullish_macro_without_price_confirmation_says_what_to_wait_for():
+    result = calculate_market_confluence({
+        "dxy": r(45),
+        "us10y": r(40),
+        "real_yields": r(35),
+        "xauusd": r(0),
+    })
+    assert result.state == "ALCISTA — ESPERAR CONFIRMACIÓN DE PRECIO"
+
+
+def test_bearish_macro_with_bearish_price_is_confirmed():
+    result = calculate_market_confluence({
+        "dxy": r(-70),
+        "us10y": r(-70),
+        "real_yields": r(-70),
+        "xauusd": r(-60),
+    })
+    assert result.state == "VENTA FUERTE"
+
+
+def test_missing_macro_driver_names_the_missing_confirmation():
+    result = calculate_market_confluence({
+        "dxy": r(80),
+        "us10y": r(70),
+        "real_yields": r(99, "UNAVAILABLE"),
+        "xauusd": r(60),
+    })
+    assert result.state == "ALCISTA — ESPERAR CONFIRMACIÓN MACRO (real_yields)"

@@ -91,25 +91,42 @@ def calculate_market_confluence(readings: Mapping[str, object]) -> MarketConflue
     # actionable state.
     incomplete = len(missing) > 0
 
+    def _wait_state(direction: int, force_conflict: bool = False) -> str:
+        prefix = "ALCISTA" if direction > 0 else "BAJISTA"
+        # Missing core data means the missing macro driver is the next thing
+        # that must confirm the direction.
+        if incomplete:
+            missing_text = ", ".join(missing)
+            return f"{prefix} — ESPERAR CONFIRMACIÓN MACRO ({missing_text})"
+        # If the macro drivers conflict internally, or price disagrees with
+        # the macro block, the next useful event is resolution of that conflict.
+        if force_conflict or (macro_sign != 0 and xau_sign != 0 and macro_sign != xau_sign):
+            return f"{prefix} — ESPERAR RESOLUCIÓN DEL CONFLICTO"
+        # Macro has a direction but XAUUSD is not confirming it yet.
+        if xau_sign == 0:
+            return f"{prefix} — ESPERAR CONFIRMACIÓN DE PRECIO"
+        # Fallback for a weak directional score.
+        return f"{prefix} — DÉBIL"
+
     if abs(macro_pressure) < 15:
         state = "INDECISION"
     elif direct_conflict:
-        state = "ALCISTA — ESPERAR" if macro_pressure > 0 else "BAJISTA — ESPERAR"
+        state = _wait_state(1 if macro_pressure > 0 else -1, force_conflict=True)
     elif macro_pressure >= 60 and xau_sign >= 0:
         state = "COMPRA FUERTE"
     elif macro_pressure >= 30:
-        state = "COMPRA MODERADA" if xau_sign >= 0 else "ALCISTA — ESPERAR"
+        state = "COMPRA MODERADA" if xau_sign > 0 else _wait_state(1)
     elif macro_pressure <= -60 and xau_sign <= 0:
         state = "VENTA FUERTE"
     elif macro_pressure <= -30:
-        state = "VENTA MODERADA" if xau_sign <= 0 else "BAJISTA — ESPERAR"
+        state = "VENTA MODERADA" if xau_sign < 0 else _wait_state(-1)
     else:
-        state = "ALCISTA — ESPERAR" if macro_pressure > 0 else "BAJISTA — ESPERAR"
+        state = _wait_state(1 if macro_pressure > 0 else -1)
 
     if incomplete and state in {"COMPRA FUERTE", "COMPRA MODERADA"}:
-        state = "ALCISTA — ESPERAR"
+        state = _wait_state(1)
     elif incomplete and state in {"VENTA FUERTE", "VENTA MODERADA"}:
-        state = "BAJISTA — ESPERAR"
+        state = _wait_state(-1)
 
     if direct_conflict:
         conflict_level = "ALTO" if len(conflict_reasons) > 1 else "MEDIO"
@@ -121,7 +138,13 @@ def calculate_market_confluence(readings: Mapping[str, object]) -> MarketConflue
     elif state.startswith("VENTA"):
         explanation = "La presión macro pesa sobre el oro y XAUUSD confirma o no contradice el movimiento."
     elif direct_conflict:
-        explanation = "; ".join(conflict_reasons) + ". Esperar confirmación."
+        explanation = "; ".join(conflict_reasons) + ". Se necesita resolver el conflicto antes de una señal operable."
+    elif "CONFIRMACIÓN DE PRECIO" in state:
+        explanation = "La presión macro tiene dirección, pero XAUUSD todavía no confirma el movimiento."
+    elif "CONFIRMACIÓN MACRO" in state:
+        explanation = "La dirección existe, pero falta un driver macro clave para confirmar la lectura."
+    elif "DÉBIL" in state:
+        explanation = "La dirección existe, pero la intensidad de la confluencia todavía es débil."
     elif macro_sign > 0:
         explanation = "La presión macro es favorable al oro, pero la confluencia todavía no es suficiente para una señal fuerte."
     elif macro_sign < 0:
@@ -131,7 +154,7 @@ def calculate_market_confluence(readings: Mapping[str, object]) -> MarketConflue
 
     if incomplete:
         missing_text = ", ".join(missing)
-        explanation += f" Datos incompletos: falta {missing_text}; por eso la lectura queda en modo espera."
+        explanation += f" Datos incompletos: falta {missing_text}."
 
     return MarketConfluence(
         macro_pressure=round(macro_pressure, 1),
