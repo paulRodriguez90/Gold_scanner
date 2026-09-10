@@ -3,7 +3,13 @@ name: Gold Scanner
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/30 * * * *"
+    # Argentina time (America/Argentina/Buenos_Aires):
+    # Mon-Fri 06:30, 12:00, 17:30 + Sunday 17:30. No Saturday runs.
+    - cron: "30 6 * * 1-5"
+      timezone: "America/Argentina/Buenos_Aires"
+    - cron: "0 12 * * 1-5"
+      timezone: "America/Argentina/Buenos_Aires"
+    - cron: "30 17 * * 0-5"
       timezone: "America/Argentina/Buenos_Aires"
 
 jobs:
@@ -37,7 +43,10 @@ jobs:
       - name: Run tests
         run: python -m pytest -q
 
-      - name: Run scanner
+      - name: Run scanner and send Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python -m gold_scanner.main
 
       - name: Save macro state

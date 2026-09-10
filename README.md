@@ -64,3 +64,37 @@ La reacción posterior al dato intradía sigue reservada para una capa posterior
 - Persisted future-dated surprises are removed/ignored.
 - CPI/Core CPI index-level surprises use a relative scale to avoid inflated scores such as +465.
 - GitHub Actions runs every 30 minutes.
+
+
+## V0.7 — Sesgo Direccional
+El scanner ya no interpreta el resultado como una recomendación de compra/venta. Produce contexto direccional para XAUUSD:
+
+- **Sesgo semanal:** prioriza el contexto fundamental persistente (70%) y las últimas sorpresas publicadas (30%).
+- **Sesgo del día:** utiliza el Combined Score actual (55% Market / 25% Macro / 20% Surprise).
+- Ambos sesgos se clasifican como **FUERTE, MODERADO, DÉBIL o NEUTRAL**.
+- Se muestra **Confianza** (ALTA/MEDIA/BAJA), **Motivo** y el **próximo evento relevante**.
+- No se generan instrucciones de compra o venta.
+
+Ejemplo de salida:
+```text
+GOLD SCANNER — SESGO DIRECCIONAL
+SESGO SEMANAL: SESGO ALCISTA MODERADO
+SESGO DEL DÍA: SESGO BAJISTA DÉBIL
+CONFIANZA: ...
+MOTIVO: ...
+RIESGO / EVENTO: CPI — 2026-09-11
+```
+
+## V0.7.1 — Horarios + Telegram
+- Ejecución automática en Argentina: lunes a viernes 06:30, 12:00 y 17:30.
+- Ejecución adicional los domingos a las 17:30.
+- No hay ejecución programada los sábados.
+- El mensaje de Telegram contiene el sesgo semanal, sesgo del día, confianza, score, motivo y próximo evento relevante.
+- El scanner nunca envía una recomendación de compra/venta.
+
+### Configuración de Telegram en GitHub
+Crear dos **Repository secrets**:
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_CHAT_ID`
+
+Si los secrets no existen, el scanner continúa funcionando y solamente informa que Telegram no está configurado.

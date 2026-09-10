@@ -8,6 +8,8 @@ from .report import print_v03_report
 from .macro_scoring import calculate_macro_impact, calculate_surprise_impact
 from .sources.calendar import fetch_consensus_events
 from .macro_state import load_state, save_state, update_macro_context, update_released_surprises
+from .bias import build_daily_bias, build_weekly_bias
+from .telegram import format_telegram_message, send_telegram
 
 
 def _macro_input_from_state(state):
@@ -95,7 +97,35 @@ def run():
     surprise = calculate_surprise_impact(macro_input, events, state)
 
     combined_score = round(0.55 * confluence.score + 0.25 * macro.score + 0.20 * surprise["score"], 1)
-    print_v03_report(fed, bls, markets, confluence, macro, combined_score, surprise, errors=errors, state=state)
+
+    upcoming = [e for e in (surprise.get("upcoming", []) or []) if e.get("consensus") is not None and e.get("date")]
+    upcoming.sort(key=lambda row: (row.get("date", ""), row.get("release_time") or ""))
+    next_event = None
+    if upcoming:
+        row = upcoming[0]
+        next_event = f'{row.get("label", "Evento macro")} — {row.get("date")}'
+    elif fed.get("next_fomc"):
+        next_event = f'FOMC — {fed.get("next_fomc")}'
+
+    weekly_bias = build_weekly_bias(macro, surprise, next_event)
+    daily_bias = build_daily_bias(combined_score, confluence, macro, surprise, next_event)
+    print_v03_report(
+        fed, bls, markets, confluence, macro, combined_score, surprise,
+        errors=errors, state=state, weekly_bias=weekly_bias,
+        daily_bias=daily_bias, next_event=next_event
+    )
+
+    # Telegram is optional for local runs. In GitHub Actions, configure the
+    # two repository secrets to receive the directional context automatically.
+    if __import__("os").environ.get("TELEGRAM_BOT_TOKEN") and __import__("os").environ.get("TELEGRAM_CHAT_ID"):
+        try:
+            message = format_telegram_message(weekly_bias, daily_bias, next_event)
+            send_telegram(message)
+            print("TELEGRAM: mensaje enviado correctamente.")
+        except Exception as exc:
+            print(f"TELEGRAM WARNING: no se pudo enviar el mensaje: {exc}")
+    else:
+        print("TELEGRAM: no configurado (faltan TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID).")
 
 
 if __name__ == "__main__":

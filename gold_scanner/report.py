@@ -7,9 +7,25 @@ def _fmt_change(value, unit):
     return f"{value:+.3f}{' pp' if unit == '%' else '%'}"
 
 
-def print_v03_report(fed, bls, markets, confluence, macro=None, combined_score=None, surprise=None, errors=None, state=None):
-    print("=== GOLD SCANNER V0.6 — PERSISTENT MACRO CONTEXT ===")
+def print_v03_report(fed, bls, markets, confluence, macro=None, combined_score=None, surprise=None, errors=None, state=None, weekly_bias=None, daily_bias=None, next_event=None):
+    print("=== GOLD SCANNER V0.7 — SESGO DIRECCIONAL ===")
     print(f"Retrieved: {datetime.now(timezone.utc).isoformat()}")
+    if weekly_bias is not None or daily_bias is not None:
+        print("\n════════════════════════════════")
+        print("GOLD SCANNER — SESGO DIRECCIONAL")
+        print("════════════════════════════════")
+        if weekly_bias is not None:
+            print(f"SESGO SEMANAL: {weekly_bias.bias}")
+            print(f"  Score: {weekly_bias.score:+.1f} | Confianza: {weekly_bias.confidence}")
+            print(f"  Motivo: {weekly_bias.reason}")
+        if daily_bias is not None:
+            print(f"SESGO DEL DÍA: {daily_bias.bias}")
+            print(f"  Score: {daily_bias.score:+.1f} | Confianza: {daily_bias.confidence}")
+            print(f"  Motivo: {daily_bias.reason}")
+        if next_event:
+            print(f"RIESGO / EVENTO: {next_event}")
+        print("════════════════════════════════")
+
     print("\nMARKET DRIVERS")
     for key in ("dxy", "us10y", "real_yields", "xauusd"):
         r = markets[key]
@@ -111,7 +127,7 @@ def print_v03_report(fed, bls, markets, confluence, macro=None, combined_score=N
         local_label = dt.strftime("%Y-%m-%d %H:%M UTC")
         print(f"- {local_label} — {item.get('title', item.get('summary', ''))}")
 
-    print("\nV0.6 STATUS: MARKET + MACRO CONTEXT PERSISTENT; LAST VALID SURPRISE REMAINS ACTIVE UNTIL A NEW RELEASE.")
+    print("\nV0.7 STATUS: SESGO DIRECCIONAL DIARIO + SEMANAL; SIN RECOMENDACIÓN DE COMPRA/VENTA.")
     if errors:
         print("\nSOURCE WARNINGS")
         for error in errors:
