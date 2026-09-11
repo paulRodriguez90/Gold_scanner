@@ -12,43 +12,19 @@ def _direction_emoji(bias: str) -> str:
         return "🟢"
     if "BAJISTA" in bias:
         return "🔴"
-    return "⚪"
+    return "🟡"
 
 
 def _confidence_emoji(confidence: str) -> str:
     return {"ALTA": "🟢", "MEDIA": "🟡", "BAJA": "⚪"}.get(confidence, "⚪")
 
 
-def _score_gauge(score: float, width: int = 16) -> str:
-    """Single-line compact score scale for Telegram.
-
-    The left endpoint is red (-100) and the marker moves with the score.
-    The right endpoint is represented by the +100 label above the line.
-    """
-    score = max(-100.0, min(100.0, float(score)))
-    pos = int(round((score + 100.0) / 200.0 * width))
-
-    if score <= -70:
-        marker = "🔴"
-    elif score < -30:
-        marker = "🟠"
-    elif score < 0:
-        marker = "🟡"
-    elif score >= 70:
-        marker = "🟢"
-    elif score > 30:
-        marker = "🟢"
-    elif score > 0:
-        marker = "🟡"
-    else:
-        marker = "⚪"
-
-    pos = min(width, max(0, pos))
-    return "🔴" + ("━" * pos) + marker + ("━" * max(0, width - pos))
-
-
 def format_telegram_message(weekly_bias, daily_bias, next_event=None, retrieved_at=None) -> str:
-    """Build the minimal directional-context message sent to Telegram."""
+    """Build the clean directional-context message sent to Telegram.
+
+    Telegram intentionally exposes only the final bias, confidence, score,
+    reason, risk/event and timestamp. Technical and macro inputs remain internal.
+    """
     if retrieved_at is None:
         retrieved_at = datetime.now(timezone.utc)
     elif retrieved_at.tzinfo is None:
@@ -56,22 +32,16 @@ def format_telegram_message(weekly_bias, daily_bias, next_event=None, retrieved_
 
     art = retrieved_at.astimezone(ZoneInfo("America/Argentina/Buenos_Aires"))
     lines = [
-        "══════════════════════════════",
         "🥇 GOLD SCANNER",
-        "══════════════════════════════",
         "",
         "📅 SESGO SEMANAL",
         f"{_direction_emoji(weekly_bias.bias)} {weekly_bias.bias}",
         f"Confianza: {_confidence_emoji(weekly_bias.confidence)} {weekly_bias.confidence}",
-        f"-100                                      +100",
-        _score_gauge(weekly_bias.score),
         f"<b>Score: {weekly_bias.score:+.1f}</b>",
         "",
         "📆 SESGO DEL DÍA",
         f"{_direction_emoji(daily_bias.bias)} {daily_bias.bias}",
         f"Confianza: {_confidence_emoji(daily_bias.confidence)} {daily_bias.confidence}",
-        f"-100                                      +100",
-        _score_gauge(daily_bias.score),
         f"<b>Score: {daily_bias.score:+.1f}</b>",
         "",
         "🧭 MOTIVO",
@@ -85,7 +55,6 @@ def format_telegram_message(weekly_bias, daily_bias, next_event=None, retrieved_
         "",
         "ℹ️ Contexto direccional.",
         "Sin recomendación de compra/venta.",
-        "══════════════════════════════",
     ])
     return "\n".join(lines)
 
