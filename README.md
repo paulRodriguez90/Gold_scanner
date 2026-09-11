@@ -98,3 +98,8 @@ Crear dos **Repository secrets**:
 - `TELEGRAM_CHAT_ID`
 
 Si los secrets no existen, el scanner continúa funcionando y solamente informa que Telegram no está configurado.
+
+## V0.7.2 — Estabilidad de CI
+- Corrige tests que dependían de la hora real de ejecución del runner.
+- Mantiene la regla correcta: un evento futuro no puede convertirse en `Actual` aunque el proveedor lo muestre poblado.
+- El workflow puede completar los tests y continuar con el scanner y Telegram.
