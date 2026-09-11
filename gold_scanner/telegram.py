@@ -19,38 +19,40 @@ def _confidence_emoji(confidence: str) -> str:
     return {"ALTA": "🟢", "MEDIA": "🟡", "BAJA": "⚪"}.get(confidence, "⚪")
 
 
-def _score_gauge(score: float, width: int = 21) -> str:
-    """Telegram score gauge with proportional position and intensity."""
+def _score_gauge(score: float, width: int = 31) -> str:
+    """Compact Telegram gauge that stays on one line on mobile.
+
+    The scale is always -100..+100. The marker moves proportionally and its
+    color reflects the intensity/direction, while the line remains compact.
+    """
     score = max(-100.0, min(100.0, float(score)))
-    center = width // 2
     pos = int(round((score + 100.0) / 200.0 * (width - 1)))
-    if score < -70:
-        fill = "🟥"
+
+    if score <= -70:
+        marker = "🔴"
     elif score < -30:
-        fill = "🔴"
+        marker = "🟠"
     elif score < 0:
-        fill = "🟠"
-    elif score > 70:
-        fill = "🟩"
+        marker = "🟡"
+    elif score >= 70:
+        marker = "🟢"
     elif score > 30:
-        fill = "🟢"
+        marker = "🟢"
     elif score > 0:
-        fill = "🟡"
+        marker = "🟡"
     else:
-        fill = "⬜"
-    cells = ["⬜"] * width
-    cells[0] = "🔴"
-    cells[center] = "│"
-    cells[-1] = "🟢"
-    if score < 0:
-        for i in range(1, pos):
-            cells[i] = fill
-    elif score > 0:
-        for i in range(center + 1, pos):
-            cells[i] = fill
-    if pos not in (0, center, width - 1):
-        cells[pos] = "⚪"
-    return "".join(cells)
+        marker = "⚪"
+
+    left = "━" * pos
+    right = "━" * (width - pos - 1)
+    return f"🔴{left}{marker}{right}🟢"
+
+
+def _score_position(score: float, width: int = 31) -> str:
+    """Return a short visual pointer under the gauge without long emoji runs."""
+    score = max(-100.0, min(100.0, float(score)))
+    pos = int(round((score + 100.0) / 200.0 * (width - 1)))
+    return " " * (pos + 1) + f"{score:+.1f}"
 
 
 def format_telegram_message(weekly_bias, daily_bias, next_event=None, retrieved_at=None) -> str:
@@ -71,14 +73,14 @@ def format_telegram_message(weekly_bias, daily_bias, next_event=None, retrieved_
         f"Confianza: {_confidence_emoji(weekly_bias.confidence)} {weekly_bias.confidence}",
         f"-100                                      +100",
         _score_gauge(weekly_bias.score),
-        f"{' ' * (int(round((weekly_bias.score + 100.0) / 200.0 * 20)) * 2)}{weekly_bias.score:+.1f}",
+        _score_position(weekly_bias.score),
         "",
         "📆 SESGO DEL DÍA",
         f"{_direction_emoji(daily_bias.bias)} {daily_bias.bias}",
         f"Confianza: {_confidence_emoji(daily_bias.confidence)} {daily_bias.confidence}",
         f"-100                                      +100",
         _score_gauge(daily_bias.score),
-        f"{' ' * (int(round((daily_bias.score + 100.0) / 200.0 * 20)) * 2)}{daily_bias.score:+.1f}",
+        _score_position(daily_bias.score),
         "",
         "🧭 MOTIVO",
         daily_bias.reason,

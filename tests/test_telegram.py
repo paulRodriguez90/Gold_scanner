@@ -15,5 +15,8 @@ def test_telegram_message_contains_directional_context():
     assert "CPI — 2026-09-11" in msg
     assert "Sin recomendación de compra/venta." in msg
     assert "-100" in msg and "+100" in msg
-    assert "🟥" in msg or "🔴" in msg
+    assert "🔴" in msg and "🟢" in msg
+    gauges = [line for line in msg.splitlines() if line.startswith("🔴") and line.endswith("🟢")]
+    assert len(gauges) == 2
+    assert all(len(line) < 45 for line in gauges)
     assert "-32.7" in msg and "-20.7" in msg
