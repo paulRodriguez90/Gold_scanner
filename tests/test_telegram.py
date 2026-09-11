@@ -19,4 +19,6 @@ def test_telegram_message_contains_directional_context():
     gauges = [line for line in msg.splitlines() if line.startswith("🔴") and line.endswith("🟢")]
     assert len(gauges) == 2
     assert all(len(line) < 45 for line in gauges)
-    assert "-32.7" in msg and "-20.7" in msg
+    assert "Score: -32.7" in msg and "Score: -20.7" in msg
+    # No secondary pointer/bar line; score is shown as text only.
+    assert "Score: -32.7" in msg
