@@ -19,14 +19,14 @@ def _confidence_emoji(confidence: str) -> str:
     return {"ALTA": "🟢", "MEDIA": "🟡", "BAJA": "⚪"}.get(confidence, "⚪")
 
 
-def _score_gauge(score: float, width: int = 31) -> str:
-    """Compact Telegram gauge that stays on one line on mobile.
+def _score_gauge(score: float, width: int = 16) -> str:
+    """Single-line compact score scale for Telegram.
 
-    The scale is always -100..+100. The marker moves proportionally and its
-    color reflects the intensity/direction, while the line remains compact.
+    The left endpoint is red (-100) and the marker moves with the score.
+    The right endpoint is represented by the +100 label above the line.
     """
     score = max(-100.0, min(100.0, float(score)))
-    pos = int(round((score + 100.0) / 200.0 * (width - 1)))
+    pos = int(round((score + 100.0) / 200.0 * width))
 
     if score <= -70:
         marker = "🔴"
@@ -43,9 +43,8 @@ def _score_gauge(score: float, width: int = 31) -> str:
     else:
         marker = "⚪"
 
-    left = "━" * pos
-    right = "━" * (width - pos - 1)
-    return f"🔴{left}{marker}{right}🟢"
+    pos = min(width, max(0, pos))
+    return "🔴" + ("━" * pos) + marker + ("━" * max(0, width - pos))
 
 
 def format_telegram_message(weekly_bias, daily_bias, next_event=None, retrieved_at=None) -> str:
@@ -66,14 +65,14 @@ def format_telegram_message(weekly_bias, daily_bias, next_event=None, retrieved_
         f"Confianza: {_confidence_emoji(weekly_bias.confidence)} {weekly_bias.confidence}",
         f"-100                                      +100",
         _score_gauge(weekly_bias.score),
-        f"Score: {weekly_bias.score:+.1f}",
+        f"<b>Score: {weekly_bias.score:+.1f}</b>",
         "",
         "📆 SESGO DEL DÍA",
         f"{_direction_emoji(daily_bias.bias)} {daily_bias.bias}",
         f"Confianza: {_confidence_emoji(daily_bias.confidence)} {daily_bias.confidence}",
         f"-100                                      +100",
         _score_gauge(daily_bias.score),
-        f"Score: {daily_bias.score:+.1f}",
+        f"<b>Score: {daily_bias.score:+.1f}</b>",
         "",
         "🧭 MOTIVO",
         daily_bias.reason,
@@ -97,5 +96,5 @@ def send_telegram(message: str) -> None:
     if not token or not chat_id:
         raise RuntimeError("Telegram no configurado: faltan TELEGRAM_BOT_TOKEN y/o TELEGRAM_CHAT_ID")
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    response = requests.post(url, json={"chat_id": chat_id, "text": message}, timeout=20)
+    response = requests.post(url, json={"chat_id": chat_id, "text": message, "parse_mode": "HTML"}, timeout=20)
     response.raise_for_status()

@@ -15,10 +15,9 @@ def test_telegram_message_contains_directional_context():
     assert "CPI — 2026-09-11" in msg
     assert "Sin recomendación de compra/venta." in msg
     assert "-100" in msg and "+100" in msg
-    assert "🔴" in msg and "🟢" in msg
-    gauges = [line for line in msg.splitlines() if line.startswith("🔴") and line.endswith("🟢")]
+    assert "🔴" in msg and "🟠" in msg
+    gauges = [line for line in msg.splitlines() if line.startswith("🔴") and "━" in line]
     assert len(gauges) == 2
-    assert all(len(line) < 45 for line in gauges)
-    assert "Score: -32.7" in msg and "Score: -20.7" in msg
-    # No secondary pointer/bar line; score is shown as text only.
-    assert "Score: -32.7" in msg
+    assert all(len(line) < 30 for line in gauges)
+    assert "<b>Score: -32.7</b>" in msg and "<b>Score: -20.7</b>" in msg
+    assert "🟢" not in gauges[0] and "🟢" not in gauges[1]
