@@ -170,3 +170,18 @@ def test_market_snapshot_uses_trading_economics_before_fred(monkeypatch):
     snapshot = markets.fetch_market_snapshot()
     assert snapshot["real_yields"].value == 2.43
     assert "Trading Economics" in snapshot["real_yields"].source
+
+
+def test_technical_context_uses_closed_1h_and_combines_macd_stochastic():
+    from datetime import datetime, timezone, timedelta
+    rows = []
+    base = 3300.0
+    now = datetime.now(timezone.utc) - timedelta(hours=1)
+    for i in range(60):
+        close = base + i * 3.0
+        rows.append((now - timedelta(hours=59-i), close + 5, close - 5, close))
+    reading = markets._technical_score_from_1h(rows)
+    assert reading.timeframe == "1H"
+    assert reading.observed_at.tzinfo is not None
+    assert reading.stochastic_k > 50
+    assert reading.score > 0

@@ -7,8 +7,8 @@ def _fmt_change(value, unit):
     return f"{value:+.3f}{' pp' if unit == '%' else '%'}"
 
 
-def print_v03_report(fed, bls, markets, confluence, macro=None, combined_score=None, surprise=None, errors=None, state=None, weekly_bias=None, daily_bias=None, next_event=None):
-    print("=== GOLD SCANNER V0.7 — SESGO DIRECCIONAL ===")
+def print_v03_report(fed, bls, markets, confluence, macro=None, combined_score=None, surprise=None, errors=None, state=None, weekly_bias=None, daily_bias=None, next_event=None, technical=None):
+    print("=== GOLD SCANNER V0.7.3 — SESGO DIRECCIONAL ===")
     print(f"Retrieved: {datetime.now(timezone.utc).isoformat()}")
     if weekly_bias is not None or daily_bias is not None:
         print("\n════════════════════════════════")
@@ -69,9 +69,16 @@ def print_v03_report(fed, bls, markets, confluence, macro=None, combined_score=N
                 for row in upcoming[:6]:
                     print(f"{row["label"]}: consensus={row["consensus"]} | previous={row.get("previous")} | date={row["date"]} | source={row.get('source','n/a')}")
             print(f"Surprise explanation: {surprise["explanation"]}")
-            print("Nota: el último surprise válido permanece en la ecuación hasta que exista una publicación más reciente del mismo indicador/métrica.")
+            print("Nota: solo la última publicación válida de cada indicador/métrica permanece activa; una nueva publicación reemplaza a la anterior.")
         if combined_score is not None:
-            print(f"Combined score (55% market / 25% macro / 20% surprise): {combined_score:+.1f}")
+            print(f"Combined score (45% market / 25% macro / 15% surprise / 10% MACD 1H / 5% Stochastic 1H): {combined_score:+.1f}")
+
+    if technical is not None:
+        print("\nTECHNICAL CONTEXT 1H (INTERNAL)")
+        print(f"MACD: {technical.macd:+.5f} | Signal: {technical.signal:+.5f} | Histogram: {technical.histogram:+.5f} | previous={technical.previous_histogram:+.5f}")
+        print(f"MACD direction: {technical.macd_direction} | latest cross: {technical.macd_cross} | score={technical.macd_score:+.1f}")
+        print(f"Stochastic 1H: K={technical.stochastic_k:.2f} | D={technical.stochastic_d:.2f} | direction={technical.stochastic_direction} | score={technical.stochastic_score:+.1f}")
+        print(f"Technical score: {technical.score:+.1f} | direction={technical.direction} | observed={technical.observed_at.isoformat()} | source={technical.source}")
 
     print("\nFED")
     target = fed.get("target_range", {})
@@ -127,7 +134,7 @@ def print_v03_report(fed, bls, markets, confluence, macro=None, combined_score=N
         local_label = dt.strftime("%Y-%m-%d %H:%M UTC")
         print(f"- {local_label} — {item.get('title', item.get('summary', ''))}")
 
-    print("\nV0.7 STATUS: SESGO DIRECCIONAL DIARIO + SEMANAL; SIN RECOMENDACIÓN DE COMPRA/VENTA.")
+    print("\nV0.7.3 STATUS: SESGO DIRECCIONAL DIARIO + SEMANAL; MACD 1H + STOCHASTIC 1H INTERNOS; SIN RECOMENDACIÓN DE COMPRA/VENTA.")
     if errors:
         print("\nSOURCE WARNINGS")
         for error in errors:

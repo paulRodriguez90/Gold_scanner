@@ -10,6 +10,7 @@ from .sources.calendar import fetch_consensus_events
 from .macro_state import load_state, save_state, update_macro_context, update_released_surprises
 from .bias import build_daily_bias, build_weekly_bias
 from .telegram import format_telegram_message, send_telegram
+from .sources.markets import fetch_technical_context
 
 
 def _macro_input_from_state(state):
@@ -37,6 +38,7 @@ def run():
     fed = {}
     bls = {}
     markets = {}
+    technical = None
     macro_input = _macro_input_from_state(state)
     errors = []
 
@@ -68,6 +70,11 @@ def run():
         errors.append(f"Markets: {exc}")
         markets = {}
 
+    try:
+        technical = fetch_technical_context()
+    except Exception as exc:
+        errors.append(f"Technical 1H: {exc}")
+
     # Persist any newly retrieved macro context before calculating the report.
     state = update_macro_context(state, macro_input)
 
@@ -96,7 +103,14 @@ def run():
     save_state(state)
     surprise = calculate_surprise_impact(macro_input, events, state)
 
-    combined_score = round(0.55 * confluence.score + 0.25 * macro.score + 0.20 * surprise["score"], 1)
+    technical_score = float(getattr(technical, "score", 0.0)) if technical is not None else 0.0
+    # Daily bias: market + fundamentals + current macro surprise + 1H technical context.
+    # MACD/Stochastic are internal context, never trade signals.
+    combined_score = round(
+        0.45 * confluence.score + 0.25 * macro.score + 0.15 * surprise["score"]
+        + 0.10 * (float(getattr(technical, "macd_score", 0.0)) if technical else 0.0)
+        + 0.05 * (float(getattr(technical, "stochastic_score", 0.0)) if technical else 0.0), 1
+    )
 
     upcoming = [e for e in (surprise.get("upcoming", []) or []) if e.get("consensus") is not None and e.get("date")]
     upcoming.sort(key=lambda row: (row.get("date", ""), row.get("release_time") or ""))
@@ -108,11 +122,11 @@ def run():
         next_event = f'FOMC — {fed.get("next_fomc")}'
 
     weekly_bias = build_weekly_bias(macro, surprise, next_event)
-    daily_bias = build_daily_bias(combined_score, confluence, macro, surprise, next_event)
+    daily_bias = build_daily_bias(combined_score, confluence, macro, surprise, next_event, technical=technical)
     print_v03_report(
         fed, bls, markets, confluence, macro, combined_score, surprise,
         errors=errors, state=state, weekly_bias=weekly_bias,
-        daily_bias=daily_bias, next_event=next_event
+        daily_bias=daily_bias, next_event=next_event, technical=technical
     )
 
     # Telegram is optional for local runs. In GitHub Actions, configure the

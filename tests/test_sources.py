@@ -156,7 +156,7 @@ def test_myfxbook_calendar_parser_reads_previous_consensus_actual():
     html = """
     <table><tr><th>Date</th><th>Previous</th><th>Consensus</th><th>Actual</th></tr>
     <tr><td>Aug 12, 2026 12:30</td><td>333.95</td><td>333.99</td><td>333.92</td></tr>
-    <tr><td>Sep 11, 2999 12:30</td><td>—</td><td>334.85</td><td>—</td></tr>
+    <tr><td>Sep 12, 2026 12:30</td><td>—</td><td>334.85</td><td>—</td></tr>
     </table>
     """
     rows = _parse_public_calendar_rows(html, "cpi", "Myfxbook")
@@ -244,7 +244,7 @@ def test_public_calendar_future_actual_is_not_treated_as_released():
     from gold_scanner.sources.calendar import _parse_public_calendar_rows
     html = """
     <table><tr><th>Date</th><th>Previous</th><th>Consensus</th><th>Actual</th></tr>
-    <tr><td>Sep 11, 2999 12:30</td><td>333.95</td><td>334.85</td><td>333.92</td></tr>
+    <tr><td>Sep 12, 2026 12:30</td><td>333.95</td><td>334.85</td><td>333.92</td></tr>
     </table>
     """
     rows = _parse_public_calendar_rows(html, "cpi", "Investing.com")

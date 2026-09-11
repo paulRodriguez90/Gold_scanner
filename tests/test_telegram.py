@@ -13,4 +13,7 @@ def test_telegram_message_contains_directional_context():
     assert "SESGO DEL DÍA" in msg
     assert "SESGO BAJISTA DÉBIL" in msg
     assert "CPI — 2026-09-11" in msg
-    assert "Sin recomendación de compra/venta" in msg
+    assert "Sin recomendación de compra/venta." in msg
+    assert "-100" in msg and "+100" in msg
+    assert "🟥" in msg or "🔴" in msg
+    assert "-32.7" in msg and "-20.7" in msg

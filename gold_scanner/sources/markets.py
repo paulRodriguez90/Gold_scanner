@@ -394,6 +394,144 @@ def _make_reading(name: str, rows: list[tuple[str, float]], unit: str, source: s
     return MarketReading(name, current, p1, p5, c1, c5, unit, source, observed, score, direction, reason)
 
 
+
+@dataclass
+class TechnicalReading:
+    symbol: str
+    timeframe: str
+    observed_at: datetime
+    macd: float
+    signal: float
+    histogram: float
+    previous_histogram: float
+    macd_score: float
+    macd_direction: str
+    macd_cross: str
+    stochastic_k: float
+    stochastic_d: float
+    stochastic_score: float
+    stochastic_direction: str
+    score: float
+    direction: str
+    source: str
+
+
+def _yahoo_ohlc(symbol: str, range_: str = "5d", interval: str = "1h"):
+    r = _get(YAHOO_CHART.format(symbol=symbol), params={"range": range_, "interval": interval, "events": "history"})
+    payload = r.json()
+    result = payload["chart"]["result"][0]
+    timestamps = result.get("timestamp", [])
+    quote = result["indicators"]["quote"][0]
+    rows = []
+    now_ts = datetime.now(timezone.utc).timestamp()
+    for ts, high, low, close in zip(timestamps, quote.get("high", []), quote.get("low", []), quote.get("close", [])):
+        if None in (high, low, close):
+            continue
+        # Yahoo hourly candles are timestamped at their opening time. Keep only
+        # fully closed candles so the technical context cannot repaint.
+        if float(ts) + 3600 > now_ts:
+            continue
+        rows.append((datetime.fromtimestamp(ts, tz=timezone.utc), float(high), float(low), float(close)))
+    if len(rows) < 40:
+        raise RuntimeError(f"Yahoo returned insufficient 1H OHLC history for {symbol}")
+    return rows
+
+
+def _ema(values, period):
+    alpha = 2.0 / (period + 1.0)
+    out = []
+    ema = values[0]
+    for value in values:
+        ema = alpha * value + (1.0 - alpha) * ema
+        out.append(ema)
+    return out
+
+
+def _technical_score_from_1h(rows) -> TechnicalReading:
+    closes = [r[3] for r in rows]
+    highs = [r[1] for r in rows]
+    lows = [r[2] for r in rows]
+    ema12 = _ema(closes, 12)
+    ema26 = _ema(closes, 26)
+    macd_series = [a - b for a, b in zip(ema12, ema26)]
+    signal_series = _ema(macd_series, 9)
+    hist = [m - sg for m, sg in zip(macd_series, signal_series)]
+    m, sg, h = macd_series[-1], signal_series[-1], hist[-1]
+    ph = hist[-2]
+
+    cross = "NINGUNO"
+    cross_index = None
+    for i in range(1, len(macd_series)):
+        if macd_series[i-1] <= signal_series[i-1] and macd_series[i] > signal_series[i]:
+            cross, cross_index = "ALCISTA", i
+        elif macd_series[i-1] >= signal_series[i-1] and macd_series[i] < signal_series[i]:
+            cross, cross_index = "BAJISTA", i
+    bars_since_cross = (len(macd_series) - 1 - cross_index) if cross_index is not None else 999
+
+    if m > sg and h > ph:
+        macd_score = 100.0 if bars_since_cross <= 6 and cross == "ALCISTA" else 80.0
+        macd_direction = "ALCISTA"
+    elif m > sg:
+        macd_score = 55.0
+        macd_direction = "ALCISTA"
+    elif m < sg and h < ph:
+        macd_score = -100.0 if bars_since_cross <= 6 and cross == "BAJISTA" else -80.0
+        macd_direction = "BAJISTA"
+    elif m < sg:
+        macd_score = -55.0
+        macd_direction = "BAJISTA"
+    else:
+        macd_score = 0.0
+        macd_direction = "NEUTRAL"
+
+    period = 14
+    k_values = []
+    for i in range(period - 1, len(closes)):
+        hh = max(highs[i-period+1:i+1])
+        ll = min(lows[i-period+1:i+1])
+        k_values.append(50.0 if hh == ll else ((closes[i] - ll) / (hh - ll)) * 100.0)
+    k = k_values[-1]
+    d = sum(k_values[-3:]) / min(3, len(k_values))
+    if k > 50.0:
+        stoch_score = 100.0
+        stoch_direction = "ALCISTA"
+    elif k < 50.0:
+        stoch_score = -100.0
+        stoch_direction = "BAJISTA"
+    else:
+        stoch_score = 0.0
+        stoch_direction = "NEUTRAL"
+
+    score = 0.70 * macd_score + 0.30 * stoch_score
+    direction = "ALCISTA" if score >= 20 else "BAJISTA" if score <= -20 else "NEUTRAL"
+    return TechnicalReading(
+        symbol="GC=F", timeframe="1H", observed_at=rows[-1][0],
+        macd=m, signal=sg, histogram=h, previous_histogram=ph,
+        macd_score=macd_score, macd_direction=macd_direction, macd_cross=cross,
+        stochastic_k=k, stochastic_d=d, stochastic_score=stoch_score,
+        stochastic_direction=stoch_direction, score=round(score, 1),
+        direction=direction, source="Yahoo Finance / COMEX Gold futures (technical proxy)"
+    )
+
+
+def fetch_technical_context() -> TechnicalReading:
+    # Prefer spot XAUUSD. Yahoo can intermittently omit FX/spot intraday data,
+    # so COMEX Gold futures is a resilient fallback for the technical context.
+    last_exc = None
+    for symbol in ("XAUUSD=X", "GC=F"):
+        try:
+            reading = _technical_score_from_1h(_yahoo_ohlc(symbol, "5d", "1h"))
+            if symbol == "XAUUSD=X":
+                reading.source = "Yahoo Finance / XAUUSD spot"
+                reading.symbol = symbol
+            else:
+                reading.source = "Yahoo Finance / COMEX Gold futures (technical proxy)"
+                reading.symbol = symbol
+            return reading
+        except Exception as exc:
+            last_exc = exc
+    raise RuntimeError(f"No se pudo obtener contexto técnico 1H de XAUUSD/GC=F: {last_exc}")
+
 def fetch_market_snapshot() -> dict[str, MarketReading]:
     """Fetch market drivers. A failed provider never aborts the full scanner."""
     out: dict[str, MarketReading] = {}

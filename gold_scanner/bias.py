@@ -60,7 +60,7 @@ def build_weekly_bias(macro, surprise: dict | None, next_event: str | None = Non
     return build_bias(score, reason)
 
 
-def build_daily_bias(combined_score: float, confluence, macro, surprise: dict | None, next_event: str | None = None) -> DirectionalBias:
+def build_daily_bias(combined_score: float, confluence, macro, surprise: dict | None, next_event: str | None = None, technical=None) -> DirectionalBias:
     score = clamp(combined_score)
     market_score = float(getattr(confluence, "score", 0.0))
     macro_score = float(getattr(macro, "score", 0.0))
@@ -76,6 +76,14 @@ def build_daily_bias(combined_score: float, confluence, macro, surprise: dict | 
         parts.append("los factores están equilibrados")
     if getattr(confluence, "conflict", False):
         parts.append("existe conflicto entre los drivers y el precio")
+    if technical is not None:
+        tech_direction = getattr(technical, "direction", "NEUTRAL")
+        if tech_direction == "ALCISTA" and score > 0:
+            parts.append("el contexto técnico 1H acompaña")
+        elif tech_direction == "BAJISTA" and score < 0:
+            parts.append("el contexto técnico 1H acompaña")
+        elif tech_direction != "NEUTRAL" and ((tech_direction == "ALCISTA" and score < 0) or (tech_direction == "BAJISTA" and score > 0)):
+            parts.append("existe conflicto con el contexto técnico 1H")
     reason = "; ".join(parts).capitalize() + "."
     if next_event:
         reason += f" Evento relevante próximo: {next_event}."
