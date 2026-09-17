@@ -19,7 +19,7 @@ def _confidence_emoji(confidence: str) -> str:
     return {"ALTA": "🟢", "MEDIA": "🟡", "BAJA": "⚪"}.get(confidence, "⚪")
 
 
-def format_telegram_message(weekly_bias, daily_bias, next_event=None, retrieved_at=None) -> str:
+def format_telegram_message(weekly_bias, daily_bias, next_event=None, retrieved_at=None, technical=None) -> str:
     """Build the clean directional-context message sent to Telegram.
 
     Telegram intentionally exposes only the final bias, confidence, score,
@@ -44,6 +44,10 @@ def format_telegram_message(weekly_bias, daily_bias, next_event=None, retrieved_
         f"Confianza: {_confidence_emoji(daily_bias.confidence)} {daily_bias.confidence}",
         f"<b>Score: {daily_bias.score:+.1f}</b>",
         "",
+        "📊 FUERZA DEL MERCADO",
+        f"5H: {_direction_emoji(getattr((technical or {}).get('5H'), 'classification', 'NEUTRAL'))} {getattr((technical or {}).get('5H'), 'classification', 'NO DISPONIBLE')}",
+        f"1H: {_direction_emoji(getattr((technical or {}).get('1H'), 'classification', 'NEUTRAL'))} {getattr((technical or {}).get('1H'), 'classification', 'NO DISPONIBLE')}",
+        "",
         "🧭 MOTIVO",
         daily_bias.reason,
     ]
@@ -54,7 +58,6 @@ def format_telegram_message(weekly_bias, daily_bias, next_event=None, retrieved_
         f"🕒 Actualizado: {art.strftime('%d/%m/%Y %H:%M')} ART",
         "",
         "ℹ️ Contexto direccional.",
-        "Sin recomendación de compra/venta.",
     ])
     return "\n".join(lines)
 

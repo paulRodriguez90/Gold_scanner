@@ -74,11 +74,11 @@ def print_v03_report(fed, bls, markets, confluence, macro=None, combined_score=N
             print(f"Combined score (45% market / 25% macro / 15% surprise / 10% MACD 1H / 5% Stochastic 1H): {combined_score:+.1f}")
 
     if technical is not None:
-        print("\nTECHNICAL CONTEXT 1H (INTERNAL)")
-        print(f"MACD: {technical.macd:+.5f} | Signal: {technical.signal:+.5f} | Histogram: {technical.histogram:+.5f} | previous={technical.previous_histogram:+.5f}")
-        print(f"MACD direction: {technical.macd_direction} | latest cross: {technical.macd_cross} | score={technical.macd_score:+.1f}")
-        print(f"Stochastic 1H: K={technical.stochastic_k:.2f} | D={technical.stochastic_d:.2f} | direction={technical.stochastic_direction} | score={technical.stochastic_score:+.1f}")
-        print(f"Technical score: {technical.score:+.1f} | direction={technical.direction} | observed={technical.observed_at.isoformat()} | source={technical.source}")
+        print("\nTECHNICAL MARKET STRENGTH (INTERNAL)")
+        for timeframe in ("5H", "1H"):
+            reading = technical.get(timeframe)
+            if reading:
+                print(f"{timeframe}: {reading.classification} | score={reading.score:+.1f} | observed={reading.observed_at.isoformat()} | source={reading.source}")
 
     print("\nFED")
     target = fed.get("target_range", {})
@@ -134,7 +134,7 @@ def print_v03_report(fed, bls, markets, confluence, macro=None, combined_score=N
         local_label = dt.strftime("%Y-%m-%d %H:%M UTC")
         print(f"- {local_label} — {item.get('title', item.get('summary', ''))}")
 
-    print("\nV0.7.3 STATUS: SESGO DIRECCIONAL DIARIO + SEMANAL; MACD 1H + STOCHASTIC 1H INTERNOS; SIN RECOMENDACIÓN DE COMPRA/VENTA.")
+    print("\nV0.7.4 STATUS: CONTEXTO DIRECCIONAL SEMANAL/DIARIO + FUERZA XAUUSD SPOT 5H/1H.")
     if errors:
         print("\nSOURCE WARNINGS")
         for error in errors:

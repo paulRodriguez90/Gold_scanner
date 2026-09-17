@@ -76,14 +76,11 @@ def build_daily_bias(combined_score: float, confluence, macro, surprise: dict | 
         parts.append("los factores están equilibrados")
     if getattr(confluence, "conflict", False):
         parts.append("existe conflicto entre los drivers y el precio")
-    if technical is not None:
-        tech_direction = getattr(technical, "direction", "NEUTRAL")
-        if tech_direction == "ALCISTA" and score > 0:
-            parts.append("el contexto técnico 1H acompaña")
-        elif tech_direction == "BAJISTA" and score < 0:
-            parts.append("el contexto técnico 1H acompaña")
-        elif tech_direction != "NEUTRAL" and ((tech_direction == "ALCISTA" and score < 0) or (tech_direction == "BAJISTA" and score > 0)):
-            parts.append("existe conflicto con el contexto técnico 1H")
+    if technical:
+        h1, h5 = technical.get("1H"), technical.get("5H")
+        labels = [getattr(x, "classification", "NEUTRAL") for x in (h5, h1) if x]
+        if labels:
+            parts.append("fuerza 5H/1H: " + " / ".join(labels))
     reason = "; ".join(parts).capitalize() + "."
     if next_event:
         reason += f" Evento relevante próximo: {next_event}."

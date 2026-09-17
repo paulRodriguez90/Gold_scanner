@@ -13,7 +13,8 @@ def test_telegram_message_is_clean_and_contains_directional_context():
     assert "SESGO DEL DÍA" in msg
     assert "SESGO BAJISTA DÉBIL" in msg
     assert "CPI — 2026-09-11" in msg
-    assert "Sin recomendación de compra/venta." in msg
+    assert "FUERZA DEL MERCADO" in msg
+    assert "Sin recomendación" not in msg
     assert "-100" not in msg and "+100" not in msg
     assert "━" not in msg
     assert "🔴" in msg
@@ -27,3 +28,12 @@ def test_telegram_neutral_direction_uses_yellow():
     msg = format_telegram_message(weekly, daily)
     assert "🟡 SESGO NEUTRAL" in msg
     assert "🟢 SESGO ALCISTA DÉBIL" in msg
+
+
+def test_telegram_shows_only_force_classifications_for_timeframes():
+    weekly = SimpleNamespace(bias="SESGO NEUTRAL", confidence="BAJA", score=0.0, reason="Mixto.")
+    daily = SimpleNamespace(bias="SESGO ALCISTA MODERADO", confidence="MEDIA", score=40.0, reason="Contexto.")
+    technical = {"5H": SimpleNamespace(classification="ALCISTA FUERTE"), "1H": SimpleNamespace(classification="BAJISTA DÉBIL")}
+    msg = format_telegram_message(weekly, daily, technical=technical)
+    assert "5H: 🟢 ALCISTA FUERTE" in msg
+    assert "1H: 🔴 BAJISTA DÉBIL" in msg

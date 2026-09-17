@@ -414,6 +414,7 @@ class TechnicalReading:
     score: float
     direction: str
     source: str
+    classification: str = "NEUTRAL"
 
 
 def _yahoo_ohlc(symbol: str, range_: str = "5d", interval: str = "1h"):
@@ -447,7 +448,21 @@ def _ema(values, period):
     return out
 
 
-def _technical_score_from_1h(rows) -> TechnicalReading:
+def _sma(values, period):
+    return sum(values[-period:]) / period
+
+
+def _technical_classification(score: float) -> str:
+    if score >= 70: return "ALCISTA FUERTE"
+    if score >= 35: return "ALCISTA MODERADO"
+    if score >= 15: return "ALCISTA DÉBIL"
+    if score <= -70: return "BAJISTA FUERTE"
+    if score <= -35: return "BAJISTA MODERADO"
+    if score <= -15: return "BAJISTA DÉBIL"
+    return "NEUTRAL"
+
+
+def _technical_score(rows, timeframe="1H") -> TechnicalReading:
     closes = [r[3] for r in rows]
     highs = [r[1] for r in rows]
     lows = [r[2] for r in rows]
@@ -502,35 +517,59 @@ def _technical_score_from_1h(rows) -> TechnicalReading:
         stoch_score = 0.0
         stoch_direction = "NEUTRAL"
 
-    score = 0.70 * macd_score + 0.30 * stoch_score
-    direction = "ALCISTA" if score >= 20 else "BAJISTA" if score <= -20 else "NEUTRAL"
+    # Composite in three groups: moving-average trend, momentum and rate of
+    # change.  Indicators inside a group are averaged first, preventing MACD,
+    # RSI and stochastic from becoming three correlated votes of equal force.
+    ma_periods = (20, 50, 100, 200)
+    ma_votes = [100.0 if closes[-1] > _sma(closes, p) else -100.0 for p in ma_periods]
+    ma_votes += [100.0 if closes[-1] > _ema(closes, p)[-1] else -100.0 for p in (20, 50)]
+    trend_score = sum(ma_votes) / len(ma_votes)
+    rsi_gains = [max(closes[i] - closes[i - 1], 0.0) for i in range(len(closes) - 14, len(closes))]
+    rsi_losses = [max(closes[i - 1] - closes[i], 0.0) for i in range(len(closes) - 14, len(closes))]
+    avg_loss = sum(rsi_losses) / 14
+    rsi = 100.0 if avg_loss == 0 else 100.0 - (100.0 / (1.0 + (sum(rsi_gains) / 14) / avg_loss))
+    rsi_score = max(-100.0, min(100.0, (rsi - 50.0) * 4.0))
+    stoch_centered = max(-100.0, min(100.0, (k - 50.0) * 2.0))
+    momentum_score = 0.50 * macd_score + 0.25 * rsi_score + 0.25 * stoch_centered
+    roc_base = closes[-11]
+    roc_score = max(-100.0, min(100.0, ((closes[-1] / roc_base - 1.0) / 0.02) * 100.0)) if roc_base else 0.0
+    score = round(0.45 * trend_score + 0.35 * momentum_score + 0.20 * roc_score, 1)
+    direction = "ALCISTA" if score >= 15 else "BAJISTA" if score <= -15 else "NEUTRAL"
     return TechnicalReading(
-        symbol="GC=F", timeframe="1H", observed_at=rows[-1][0],
+        symbol="XAUUSD=X", timeframe=timeframe, observed_at=rows[-1][0],
         macd=m, signal=sg, histogram=h, previous_histogram=ph,
         macd_score=macd_score, macd_direction=macd_direction, macd_cross=cross,
         stochastic_k=k, stochastic_d=d, stochastic_score=stoch_score,
-        stochastic_direction=stoch_direction, score=round(score, 1),
-        direction=direction, source="Yahoo Finance / COMEX Gold futures (technical proxy)"
+        stochastic_direction=stoch_direction, score=score,
+        direction=direction, source="Yahoo Finance / XAUUSD spot",
+        classification=_technical_classification(score),
     )
 
 
-def fetch_technical_context() -> TechnicalReading:
-    # Prefer spot XAUUSD. Yahoo can intermittently omit FX/spot intraday data,
-    # so COMEX Gold futures is a resilient fallback for the technical context.
-    last_exc = None
-    for symbol in ("XAUUSD=X", "GC=F"):
-        try:
-            reading = _technical_score_from_1h(_yahoo_ohlc(symbol, "5d", "1h"))
-            if symbol == "XAUUSD=X":
-                reading.source = "Yahoo Finance / XAUUSD spot"
-                reading.symbol = symbol
-            else:
-                reading.source = "Yahoo Finance / COMEX Gold futures (technical proxy)"
-                reading.symbol = symbol
-            return reading
-        except Exception as exc:
-            last_exc = exc
-    raise RuntimeError(f"No se pudo obtener contexto técnico 1H de XAUUSD/GC=F: {last_exc}")
+def _resample_5h(rows):
+    groups = {}
+    for stamp, high, low, close in rows:
+        bucket = stamp.replace(hour=(stamp.hour // 5) * 5, minute=0, second=0, microsecond=0)
+        groups.setdefault(bucket, []).append((stamp, high, low, close))
+    out = []
+    for bucket, candles in sorted(groups.items()):
+        if len(candles) == 5:
+            out.append((bucket, max(x[1] for x in candles), min(x[2] for x in candles), candles[-1][3]))
+    return out
+
+
+def fetch_technical_context() -> dict[str, TechnicalReading]:
+    """Return closed-candle 1H/5H XAUUSD spot strength; never use GC futures."""
+    rows = _yahoo_ohlc("XAUUSD=X", "60d", "1h")
+    rows_5h = _resample_5h(rows)
+    if len(rows_5h) < 200:
+        raise RuntimeError("Yahoo returned insufficient closed 5H XAUUSD spot history")
+    return {"1H": _technical_score(rows, "1H"), "5H": _technical_score(rows_5h, "5H")}
+
+
+# Compatibility helper retained for older callers/tests.
+def _technical_score_from_1h(rows):
+    return _technical_score(rows, "1H")
 
 def fetch_market_snapshot() -> dict[str, MarketReading]:
     """Fetch market drivers. A failed provider never aborts the full scanner."""
@@ -596,4 +635,3 @@ def fetch_market_snapshot() -> dict[str, MarketReading]:
             out["xauusd"] = _unavailable_reading("XAUUSD", "price", str(exc))
 
     return out
-

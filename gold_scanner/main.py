@@ -1,7 +1,7 @@
 from datetime import datetime, timezone, timedelta
 
 from .sources.fed import fetch_v01_snapshot as fetch_fed
-from .sources.bls import fetch_v01_snapshot as fetch_bls
+from .sources.bls import fetch_v01_snapshot as fetch_bls, ppi_final_demand_mom
 from .sources.markets import fetch_market_snapshot
 from .confluence import calculate_market_confluence
 from .report import print_v03_report
@@ -29,6 +29,24 @@ def _macro_input_from_state(state):
                 "value": value.get("value"),
             }]
     return out
+
+
+def _prefer_official_ppi_actual(events, bls_history):
+    """Replace only PPI Final Demand MoM Actual with its official BLS value.
+
+    Consensus/Previous remain calendar context. A secondary source can never
+    overwrite an official Actual, and a previous value never becomes another
+    active input.
+    """
+    official = ppi_final_demand_mom(bls_history)
+    if not official:
+        return events
+    candidates = [e for e in events if e.key == "ppi" and (e.metric in {"", "mom"})]
+    if not candidates:
+        return events
+    target = max(candidates, key=lambda e: (e.date or "", e.release_time or ""))
+    from dataclasses import replace
+    return [replace(e, actual=official["actual"], source=official["source"], released=True, metric="mom") if e is target else e for e in events]
 
 
 def run():
@@ -73,7 +91,7 @@ def run():
     try:
         technical = fetch_technical_context()
     except Exception as exc:
-        errors.append(f"Technical 1H: {exc}")
+        errors.append(f"Technical XAUUSD spot 1H/5H: {exc}")
 
     # Persist any newly retrieved macro context before calculating the report.
     state = update_macro_context(state, macro_input)
@@ -94,6 +112,7 @@ def run():
     end = (now.date() + timedelta(days=45)).isoformat()
     try:
         events = fetch_consensus_events(start, end)
+        events = _prefer_official_ppi_actual(events, macro_input)
     except Exception as exc:
         errors.append(f"Consensus calendar: {exc}")
         events = []
@@ -103,13 +122,12 @@ def run():
     save_state(state)
     surprise = calculate_surprise_impact(macro_input, events, state)
 
-    technical_score = float(getattr(technical, "score", 0.0)) if technical is not None else 0.0
-    # Daily bias: market + fundamentals + current macro surprise + 1H technical context.
-    # MACD/Stochastic are internal context, never trade signals.
+    # Daily context combines macro/market with grouped XAUUSD spot strength.
+    # 5H describes session continuity; 1H describes recent pressure.
+    technical_score = (0.60 * technical["5H"].score + 0.40 * technical["1H"].score) if technical else 0.0
     combined_score = round(
         0.45 * confluence.score + 0.25 * macro.score + 0.15 * surprise["score"]
-        + 0.10 * (float(getattr(technical, "macd_score", 0.0)) if technical else 0.0)
-        + 0.05 * (float(getattr(technical, "stochastic_score", 0.0)) if technical else 0.0), 1
+        + 0.15 * technical_score, 1
     )
 
     upcoming = [e for e in (surprise.get("upcoming", []) or []) if e.get("consensus") is not None and e.get("date")]
@@ -133,7 +151,7 @@ def run():
     # two repository secrets to receive the directional context automatically.
     if __import__("os").environ.get("TELEGRAM_BOT_TOKEN") and __import__("os").environ.get("TELEGRAM_CHAT_ID"):
         try:
-            message = format_telegram_message(weekly_bias, daily_bias, next_event)
+            message = format_telegram_message(weekly_bias, daily_bias, next_event, technical=technical)
             send_telegram(message)
             print("TELEGRAM: mensaje enviado correctamente.")
         except Exception as exc:

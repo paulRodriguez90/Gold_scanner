@@ -201,6 +201,22 @@ def test_consensus_source_cascade_uses_investing_when_myfxbook_fails(monkeypatch
     assert ppi.consensus == 0.2
 
 
+def test_ppi_final_demand_mom_is_calculated_from_official_bls_series():
+    from gold_scanner.sources.bls import ppi_final_demand_mom
+    result = ppi_final_demand_mom({"ppi_final_demand": [{"date": "2026-08", "value": 145.2}, {"date": "2026-07", "value": 144.6}]})
+    assert result["actual"] == 0.415
+
+
+def test_official_ppi_actual_replaces_secondary_actual_but_keeps_consensus():
+    from gold_scanner.main import _prefer_official_ppi_actual
+    from gold_scanner.sources.calendar import EconomicEvent
+    event = EconomicEvent("ppi", "2026-09-10", 9.9, 0.1, 0.2, source="secondary", released=True, metric="mom")
+    out = _prefer_official_ppi_actual([event], {"ppi_final_demand": [{"date": "2026-08", "value": 145.2}, {"date": "2026-07", "value": 144.6}]})
+    assert out[0].actual == 0.415
+    assert out[0].consensus == 0.2 and out[0].previous == 0.1
+    assert out[0].source.startswith("BLS")
+
+
 
 def test_forexfactory_parser_reads_usd_event():
     from gold_scanner.sources.calendar import _parse_forexfactory_events

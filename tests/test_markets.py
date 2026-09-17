@@ -185,3 +185,17 @@ def test_technical_context_uses_closed_1h_and_combines_macd_stochastic():
     assert reading.observed_at.tzinfo is not None
     assert reading.stochastic_k > 50
     assert reading.score > 0
+
+
+def test_technical_composite_classifies_1h_and_5h_strength():
+    from datetime import datetime, timezone, timedelta
+    rows = []
+    now = datetime.now(timezone.utc) - timedelta(hours=1)
+    for i in range(1100):
+        close = 3000 + i * 1.5
+        rows.append((now - timedelta(hours=1099-i), close + 3, close - 3, close))
+    h1 = markets._technical_score(rows, "1H")
+    h5 = markets._technical_score(markets._resample_5h(rows), "5H")
+    assert h1.classification == "ALCISTA FUERTE"
+    assert h5.classification.startswith("ALCISTA")
+    assert h1.source == "Yahoo Finance / XAUUSD spot"

@@ -247,6 +247,26 @@ def _observations_from_history(history: dict) -> dict:
     return observations
 
 
+def ppi_final_demand_mom(history: dict) -> dict | None:
+    """Calculate the official Final Demand PPI MoM from BLS index levels."""
+    rows = (history or {}).get("ppi_final_demand") or []
+    if len(rows) < 2:
+        return None
+    current, previous = rows[0], rows[1]
+    try:
+        current_value, previous_value = float(current["value"]), float(previous["value"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if previous_value == 0:
+        return None
+    return {
+        "period": current.get("date"),
+        "actual": round((current_value / previous_value - 1.0) * 100.0, 3),
+        "previous_index": previous_value,
+        "source": "BLS / WPSFD4 (official Final Demand PPI MoM)",
+    }
+
+
 def fetch_v01_snapshot() -> dict:
     """Return BLS calendar + all latest observations with one API request."""
     calendar = fetch_release_calendar()

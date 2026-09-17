@@ -195,7 +195,10 @@ def _parse_public_calendar_rows(html: str, key: str, source: str) -> list[Econom
         today = datetime.now(timezone.utc).date().isoformat()
         if date > today:
             actual = None
-        out.append(EconomicEvent(key, date, actual, previous, consensus, source=source, released=actual is not None, release_time=release_time, metric=""))
+        # These source pages are explicitly the MoM PPI pages. Preserve the
+        # metric identity so PPI MoM cannot be mixed with YoY/index values.
+        metric = "mom" if key in {"ppi", "core_ppi"} else ""
+        out.append(EconomicEvent(key, date, actual, previous, consensus, source=source, released=actual is not None, release_time=release_time, metric=metric))
     return out
 
 
